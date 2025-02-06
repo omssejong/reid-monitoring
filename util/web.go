@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"path/filepath"
-	"strings"
 )
 
 /**
@@ -113,6 +112,7 @@ func appRouter(r *gin.Engine) {
 		reidV1.GET("/info", SseMiddleware(), sseInfo)
 		reidV1.POST("/reboot", restartServer)
 		reidV1.POST("/servicectrl", restartService)
+		reidV1.POST("/log/download", downloadLog)
 	}
 }
 
@@ -342,31 +342,24 @@ func restartService(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
+type LogRequestStruct struct {
+	StartDate string   `json:"startDate"`
+	EndDate   string   `json:"endDate"`
+	LogType   []string `json:"logType"`
+}
+
 // Monitoring Log Download API
 func downloadLog(c *gin.Context) {
 
 	// Request Data 바인딩
-	var request RequestST
+	var request LogRequestStruct
 	if err := c.Bind(&request); err != nil {
 		log.Error(fmt.Errorf("request %v", err))
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	if request.Target == "" || request.Target == "null" {
-		log.Error(fmt.Errorf("invalid target: %s", request.Target))
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Target"})
-		return
-	}
-
-	dates := strings.Split(request.Target, "~")
-	if len(dates) != 2 {
-		log.Error(fmt.Errorf("invalid target: %s", request.Target))
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Target"})
-		return
-	}
-
-	files, err := FilterLogFilesByDate(dates[0], dates[1])
+	files, err := FilterLogFilesByDate(request.StartDate, request.EndDate)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -388,7 +381,7 @@ func downloadLog(c *gin.Context) {
 
 	// c.JSON(response.Code, response)
 	c.Header("Content-Type", "application/octet-stream")
-	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filepath.Base(compressPath)))
+	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filepath.Base(compressPath)))
 	log.Info(fmt.Sprintf("Compress Path: %s, Header: %v", compressPath, c.Writer.Header().Values("Content-Type")))
 	c.File(compressPath)
 }

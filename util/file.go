@@ -68,7 +68,7 @@ func DeleteFilesAnHours(path string) error {
  */
 func FilterLogFilesByDate(start, end string) ([]string, error) {
 
-	today := time.Now().Format("2006-01-02")
+	today := time.Now().Format("20060102")
 
 	var files []string
 
@@ -208,7 +208,7 @@ func searchFiles(targetPath, extName string) ([]string, error) {
 }
 
 func getDatesInRange(start, end string) ([]string, error) {
-	const layout = "2006-01-02"
+	const layout = "20060102"
 	startDate, err := time.Parse(layout, start)
 	if err != nil {
 		return nil, err
