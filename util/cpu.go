@@ -17,20 +17,22 @@ import (
  * @since: 2024.06.19
  * @version: 1.0.0
  */
-func GetCPUModelName() (string, error) {
+func GetCPUModelNameAndPhysicalThreadCount() (string, int, error) {
 	cpuCnt, err := cpu.Counts(false)
 	if err != nil {
 		log.Error(fmt.Errorf("fetching CPU count: %v", err))
-		return "", err
+		return "", 0, err
 	}
-
 	cpuInfo, err := cpu.Info()
 	if err != nil {
 		log.Error(fmt.Errorf("fetching CPU Info: %v", err))
-		return "", err
+		return "", 0, err
 	}
 
-	return fmt.Sprintf("%s, %d Core", cpuInfo[0].ModelName, cpuCnt), nil
+	// 선별관제 전용 모니터링
+	//return fmt.Sprintf("%s, %d Core", cpuInfo[0].ModelName, cpuCnt), cpuCnt, nil
+	// 고속분석 전용 모니터링
+	return fmt.Sprintf("%s", cpuInfo[0].ModelName), cpuCnt, nil
 }
 
 /**
@@ -71,6 +73,25 @@ func GetCPUCores() (int, error) {
 		log.Error(fmt.Errorf("fetching CPU Info: %v", err))
 		return 0, err
 	}
-
 	return len(cpuInfo), nil
+}
+
+/**
+ * GetCpuSocket
+ * CPU 소켓 수를 가져오는 함수
+ *
+ * @param: int
+ * @return: int
+ *
+ * @autor: park kyeong bin
+ * @since: 2025.02.06
+ * @version: 1.0.1
+ */
+func GetCPUSocket(thread int) (int, error) {
+	cpuInfo, err := cpu.Info()
+	if err != nil {
+		return 0, err
+	}
+
+	return len(cpuInfo) / thread, nil
 }

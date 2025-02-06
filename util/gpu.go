@@ -61,6 +61,45 @@ func GetGPUInfo() (map[string]interface{}, error) {
 
 }
 
+func ReidGetGPUInfo() ([]string, error) {
+
+	// NVML 초기화
+	err := gonvml.Initialize()
+	if err != nil {
+		log.Error(fmt.Errorf("initializing NVML: %v", err))
+		return nil, err
+	}
+	defer gonvml.Shutdown()
+
+	// GPU 디바이스 수 가져오기
+	count, err := gonvml.DeviceCount()
+	if err != nil {
+		log.Error(fmt.Errorf("getting device count: %v", err))
+		return nil, err
+	}
+	gpuInfoList := make([]string, count)
+	device, err := gonvml.DeviceHandleByIndex(0)
+	if err != nil {
+		log.Error(fmt.Errorf("getting device handle by index: %v", err))
+		return nil, err
+	}
+
+	name, err := device.Name()
+	if err != nil {
+		log.Error(fmt.Errorf("getting device name: %v", err))
+		return nil, err
+	}
+
+	var i uint
+
+	for i = 0; i < count; i++ {
+		gpuInfoList[i] = fmt.Sprintf("GPU %d: %s ", i, name)
+	}
+
+	return gpuInfoList, nil
+
+}
+
 /**
  * GetGPUUsage
  * GPU 사용량을 가져오는 함수

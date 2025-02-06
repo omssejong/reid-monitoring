@@ -31,10 +31,17 @@ type RequestST struct {
  * @version: 1.0.0
  * @since: 2024.06.20
  */
+//type ResponseST struct {
+//	Code    int                    `json:"code"`
+//	Message string                 `json:"message"`
+//	Data    map[string]interface{} `json:"data"`
+//}
+
 type ResponseST struct {
 	Code    int                    `json:"code"`
 	Message string                 `json:"message"`
-	Data    map[string]interface{} `json:"data"`
+	Data    map[string]interface{} `json:"rows"`
+	Success bool                   `json:"success"`
 }
 
 /**
@@ -80,44 +87,51 @@ func WebApp() *http.Server {
 func appRouter(r *gin.Engine) {
 
 	// API 라우터 설정
-	apiV1 := r.Group("/api/v1")
+	//apiV1 := r.Group("/api/v1")
+	//{
+	//	apiV1.GET("/monitoring/server/info", serverInfo)
+	//	apiV1.POST("/monitoring/server/restart", restartServer)
+	//	apiV1.POST("/monitoring/server/stop", shutdownServer)
+	//	apiV1.POST("/monitoring/service/start", startService)
+	//	apiV1.POST("/monitoring/service/stop", stopService)
+	//	apiV1.POST("/monitoring/service/restart", restartService)
+	//	apiV1.POST("/monitoring/log/download", downloadLog)
+	//}
+
+	// 고속검색 전용 라우터. 추후 통합 및 삭제 필요
+	reidV1 := r.Group("/monitoring/mgmt")
 	{
-		apiV1.GET("/monitoring/server/info", serverInfo)
-		apiV1.POST("/monitoring/server/restart", restartServer)
-		apiV1.POST("/monitoring/server/stop", shutdownServer)
-		apiV1.POST("/monitoring/service/start", startService)
-		apiV1.POST("/monitoring/service/stop", stopService)
-		apiV1.POST("/monitoring/service/restart", restartService)
-		apiV1.POST("/monitoring/log/download", downloadLog)
+		reidV1.GET("/server-info", reidServerInfo)
 	}
 }
 
 // Server Information API
-func serverInfo(c *gin.Context) {
+func reidServerInfo(c *gin.Context) {
 
-	infoDict := make(map[string]interface{})
+	//infoDict := make(map[string]interface{})
 	serverInfoDict := make(map[string]interface{})
 
 	// 서버 CPU 정보 가져오기
-	cpuName, err := GetCPUModelName()
+	cpuName, cpuThreads, err := GetCPUModelNameAndPhysicalThreadCount()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	cpuCores, err := GetCPUCores()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	serverInfoDict["cpu"] = map[string]interface{}{
-		"model":   cpuName,
-		"threads": cpuCores,
-	}
+	//cpuCores, err := GetCPUCores()
+	//if err != nil {
+	//	c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	//	return
+	//}
 
 	// 서버 GPU 정보 가져오기
-	gpuInfo, err := GetGPUInfo()
+	gpuInfo, err := ReidGetGPUInfo()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	cpuSockets, err := GetCPUSocket(cpuThreads)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -132,10 +146,6 @@ func serverInfo(c *gin.Context) {
 		return
 	}
 
-	serverInfoDict["memory"] = map[string]interface{}{
-		"total": memSize,
-	}
-
 	// 서버 디스크 정보 가져오기
 	diskInfo, err := GetDiskInfo()
 	if err != nil {
@@ -146,14 +156,23 @@ func serverInfo(c *gin.Context) {
 	// 서버 네트워크 정보 가져오기
 	networkBandwidth, err := GetNetworkBandwidth(networkName)
 
-	serverInfoDict["disk"] = diskInfo
 	serverInfoDict["network"] = map[string]interface{}{
 		"interfaceName": networkName,
 		"bandwidth":     networkBandwidth,
 	}
-
+	serverInfoDict["hardwareInfos"] = map[string]interface{}{
+		"cpu":           cpuName,
+		"cpu_sockets":   cpuSockets,
+		"cpu_threads":   cpuThreads,
+		"disk":          fmt.Sprintf("%dGB", diskInfo["total"]),
+		"gpu":           gpuInfo,
+		"gpu_sockets":   len(gpuInfo),
+		"mem":           fmt.Sprintf("%0.2fGB", memSize),
+		"network_speed": networkBandwidth,
+	}
+	serverInfoDict["monitorVersion"] = "1.17"
 	// 서버 정보 세팅
-	infoDict["server"] = serverInfoDict
+	//infoDict["server"] = serverInfoDict
 
 	// 서버 네트워크 정보 가져오기
 	networkInfo, err := GetNetworkInfo(networkName)
@@ -163,24 +182,30 @@ func serverInfo(c *gin.Context) {
 	}
 
 	// 네트워크 정보 세팅
-	infoDict["network"] = networkInfo
+	//infoDict["network"] = networkInfo
+	serverInfoDict["networkInfo"] = map[string]interface{}{
+		"dns":     "8.8.8.8",
+		"gateway": networkInfo["gateway"],
+		"iface":   networkName,
+		"ip":      networkInfo["ip"],
+		"netmask": networkInfo["netmask"],
+	}
 
 	// Version 정보 세팅
-	infoDict["version"] = map[string]interface{}{
-		"frontend":        configs.SC.Version.Frontend,
-		"backend":         configs.SC.Version.Backend,
-		"ai":              configs.SC.Version.AI,
-		"imageProcessing": configs.SC.Version.ImageProcessing,
-		"mediaStreaming":  configs.SC.Version.MediaStreaming,
+	serverInfoDict["omeyeVersion"] = map[string]interface{}{
+		"BE": configs.SC.Version.Backend,
+		"AI": configs.SC.Version.AI,
 	}
 
 	// 응답 데이터 설정
 	response := new(ResponseST)
 	response.Code = http.StatusOK
 	response.Message = "Server Information"
-	response.Data = infoDict
+	response.Data = serverInfoDict
+	response.Success = true
 
-	log.Info(fmt.Sprintf("Server Information: %v", infoDict))
+	//log.Info(fmt.Sprintf("Server Information: %v", infoDict))
+	log.Info(fmt.Sprintf("Server Information: %v", serverInfoDict))
 
 	c.JSON(http.StatusOK, response)
 }
