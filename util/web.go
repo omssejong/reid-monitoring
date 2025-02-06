@@ -1,12 +1,13 @@
 package util
 
 import (
+	"context"
 	"fmt"
+	"github.com/gin-gonic/gin"
+	"io"
 	"net/http"
 	"path/filepath"
 	"strings"
-
-	"github.com/gin-gonic/gin"
 )
 
 /**
@@ -102,6 +103,7 @@ func appRouter(r *gin.Engine) {
 	reidV1 := r.Group("/monitoring/mgmt")
 	{
 		reidV1.GET("/server-info", reidServerInfo)
+		reidV1.GET("/info", SseMiddleware(), sseInfo)
 	}
 }
 
@@ -208,6 +210,25 @@ func reidServerInfo(c *gin.Context) {
 	log.Info(fmt.Sprintf("Server Information: %v", serverInfoDict))
 
 	c.JSON(http.StatusOK, response)
+}
+
+func sseInfo(c *gin.Context) {
+	ctx, cancelCtx := context.WithCancel(context.Background())
+	defer cancelCtx()
+	systemInfo := make(chan map[string]any)
+	go GetSystemInfo(ctx, systemInfo)
+	//c.Writer.Flush()
+	c.Stream(func(w io.Writer) bool {
+		select {
+		case info := <-systemInfo:
+			if v, ok := info["error"]; ok {
+				c.JSON(500, gin.H{"error": v.(error).Error()})
+				return false
+			}
+			c.SSEvent("message", info)
+			return true
+		}
+	})
 }
 
 // Server Stop API

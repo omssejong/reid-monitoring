@@ -12,7 +12,7 @@ import (
 
 func main() {
 
-	go util.MonitoringWorker()
+	//go util.MonitoringWorker()
 
 	// Start monitoring server
 	srv := util.WebApp()

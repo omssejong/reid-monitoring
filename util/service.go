@@ -18,9 +18,8 @@ import (
  * @version: 1.0.0
  * @since: 2024.06.20
  */
-func GetServiceStatus() (map[string]interface{}, error) {
-
-	serviceInfoDict := make(map[string]interface{})
+func GetServiceStatus() ([]map[string]interface{}, error) {
+	serviceInfoList := make([]map[string]interface{}, 0)
 
 	// 정규표현식으로 특수문자를 확인하는 패턴
 	re := regexp.MustCompile(`[^a-zA-Z0-9\s._-]`)
@@ -62,6 +61,7 @@ func GetServiceStatus() (map[string]interface{}, error) {
 		}
 
 		for _, service := range services {
+			serviceInfoDict := make(map[string]interface{})
 			var serviceName, loaded, active string
 			if len(service) == 1 {
 				serviceName = "omeye2_back_service"
@@ -80,13 +80,15 @@ func GetServiceStatus() (map[string]interface{}, error) {
 			//log.Info(fmt.Sprintf("Service Name: %s, Loaded: %s, Active: %s", serviceName, loaded, active))
 
 			if loaded == "loaded" {
-				serviceInfoDict[strings.ReplaceAll(serviceName, ".", "_")] = active
+				serviceInfoDict["serviceName"] = serviceName
+				serviceInfoDict["serviceStatus"] = active
+				serviceInfoList = append(serviceInfoList, serviceInfoDict)
 			}
 
 		}
 	}
 
-	return serviceInfoDict, nil
+	return serviceInfoList, nil
 }
 
 /**
