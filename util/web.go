@@ -45,6 +45,13 @@ type ResponseST struct {
 	Success bool                   `json:"success"`
 }
 
+type ResponseListST struct {
+	Code    int      `json:"code"`
+	Message string   `json:"message"`
+	Data    []string `json:"rows"`
+	Success bool     `json:"success"`
+}
+
 /**
  * WebApp
  * Web Application 설정 함수
@@ -104,6 +111,8 @@ func appRouter(r *gin.Engine) {
 	{
 		reidV1.GET("/server-info", reidServerInfo)
 		reidV1.GET("/info", SseMiddleware(), sseInfo)
+		reidV1.POST("/reboot", restartServer)
+		reidV1.POST("/servicectrl", restartService)
 	}
 }
 
@@ -260,12 +269,12 @@ func shutdownServer(c *gin.Context) {
 func restartServer(c *gin.Context) {
 
 	// Request Data 바인딩
-	var request RequestST
-	if err := c.Bind(&request); err != nil {
-		log.Error(fmt.Errorf("request %v", err))
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	//var request RequestST
+	//if err := c.Bind(&request); err != nil {
+	//	log.Error(fmt.Errorf("request %v", err))
+	//	c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	//	return
+	//}
 
 	// 서버 재시작
 	if err := RestartServer(); err != nil {
@@ -278,6 +287,7 @@ func restartServer(c *gin.Context) {
 	response.Code = http.StatusOK
 	response.Message = "Server Restart Success"
 	response.Data = nil
+	response.Success = true
 
 	c.JSON(http.StatusOK, response)
 }
@@ -358,11 +368,16 @@ func stopService(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
+type ServiceRestartStruct struct {
+	Command     string   `json:"command"`
+	ServiceType []string `json:"serviceType"`
+}
+
 // Service Restart API
 func restartService(c *gin.Context) {
 
 	// Request Data 바인딩
-	var request RequestST
+	var request ServiceRestartStruct
 	if err := c.Bind(&request); err != nil {
 		log.Error(fmt.Errorf("request %v", err))
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -371,28 +386,29 @@ func restartService(c *gin.Context) {
 
 	// 서비스 재시작
 	var target string
-	log.Info(fmt.Sprintf("Request Target: %s", request.Target))
-	switch request.Target {
-	case "backend":
-		target = configs.SC.Setting.BackendServiceName
-	case "image-processing":
-		target = configs.SC.Setting.ImageProcessingServiceName
-	case "media":
-		target = configs.SC.Setting.MediaStreamingServiceName
-	case "ai":
-		target = configs.SC.Setting.AiServiceName
-	}
+	log.Info(fmt.Sprintf("Request Target: %v", request.ServiceType))
+	for _, target = range request.ServiceType {
+		switch target {
+		case "back":
+			target = configs.SC.Setting.BackendServiceName
+		case "mediaserver":
+			target = configs.SC.Setting.MediaStreamingServiceName
+		case "main":
+			target = configs.SC.Setting.AiServiceName
+		}
 
-	if err := RestartService(target); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
+		if err := RestartService(target); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
 	}
 
 	// 응답 데이터 설정
-	response := new(ResponseST)
+	response := new(ResponseListST)
 	response.Code = http.StatusOK
 	response.Message = "Service Restart Success"
-	response.Data = nil
+	response.Data = []string{"success"}
+	response.Success = true
 
 	c.JSON(http.StatusOK, response)
 }

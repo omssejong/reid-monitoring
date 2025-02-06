@@ -107,7 +107,16 @@ func RestartService(serviceName string) error {
 	if strings.Contains(serviceName, "docker") {
 		command = fmt.Sprintf("echo %s | sudo -S docker compose -f %s restart", password, fmt.Sprintf("%s/backend/docker-compose.yml", configs.SC.Setting.RootPath))
 	} else {
-		command = fmt.Sprintf("echo %s | sudo -S systemctl restart %s", password, serviceName)
+		switch serviceName {
+		case configs.SC.Setting.BackendServiceName:
+			split := strings.Split(serviceName, ",")
+			command = fmt.Sprintf("echo %s | sudo -S systemctl restart %s %s", password, split[0], split[1])
+		case configs.SC.Setting.AiServiceName:
+			split := strings.Split(serviceName, ",")
+			command = fmt.Sprintf("echo %s | sudo -S systemctl restart %s %s %s", password, split[0], split[1], split[2])
+		case configs.SC.Setting.MediaStreamingServiceName:
+			command = fmt.Sprintf("echo %s | sudo -S systemctl restart %s", password, serviceName)
+		}
 	}
 	cmd := exec.Command("bash", "-c", command)
 	log.Info(fmt.Sprintf("Restarting Service: %s", command))
