@@ -221,3 +221,13 @@ func ShutdownServer() error {
 	}
 	return nil
 }
+
+func MiddleserverRestart() error {
+	cmd := exec.Command("bash", "-c", fmt.Sprintf("echo %s | sudo virsh reboot win10 --mode acpi", password))
+	err := cmd.Run()
+	if err != nil {
+		log.Error(fmt.Errorf("error rebooting middle server: %v", err))
+		return err
+	}
+	return nil
+}

@@ -292,82 +292,6 @@ func restartServer(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
-// Service Start API
-func startService(c *gin.Context) {
-
-	// Request Data 바인딩
-	var request RequestST
-	if err := c.Bind(&request); err != nil {
-		log.Error(fmt.Errorf("request %v", err))
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// 서비스 시작
-	var target string
-	switch request.Target {
-	case "backend":
-		target = configs.SC.Setting.BackendServiceName
-	case "image-processing":
-		target = configs.SC.Setting.ImageProcessingServiceName
-	case "media-streaming":
-		target = configs.SC.Setting.MediaStreamingServiceName
-	case "ai":
-		target = configs.SC.Setting.AiServiceName
-	}
-
-	if err := StartService(target); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	// 응답 데이터 설정
-	response := new(ResponseST)
-	response.Code = http.StatusOK
-	response.Message = "Service Start Success"
-	response.Data = nil
-
-	c.JSON(http.StatusOK, response)
-}
-
-// Service Stop API
-func stopService(c *gin.Context) {
-
-	// Request Data 바인딩
-	var request RequestST
-	if err := c.Bind(&request); err != nil {
-		log.Error(fmt.Errorf("request %v", err))
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// 서비스 중지
-	var target string
-	switch request.Target {
-	case "backend":
-		target = configs.SC.Setting.BackendServiceName
-	case "image-processing":
-		target = configs.SC.Setting.ImageProcessingServiceName
-	case "media-streaming":
-		target = configs.SC.Setting.MediaStreamingServiceName
-	case "ai":
-		target = configs.SC.Setting.AiServiceName
-	}
-
-	if err := StopService(target); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	// 응답 데이터 설정
-	response := new(ResponseST)
-	response.Code = http.StatusOK
-	response.Message = "Service Stop Success"
-	response.Data = nil
-
-	c.JSON(http.StatusOK, response)
-}
-
 type ServiceRestartStruct struct {
 	Command     string   `json:"command"`
 	ServiceType []string `json:"serviceType"`
@@ -395,6 +319,11 @@ func restartService(c *gin.Context) {
 			target = configs.SC.Setting.MediaStreamingServiceName
 		case "main":
 			target = configs.SC.Setting.AiServiceName
+		case "middleserver":
+			if err := MiddleserverRestart(); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
 		}
 
 		if err := RestartService(target); err != nil {

@@ -76,6 +76,7 @@ type SettingConfig struct {
 		MediaStreamingServiceName  string `ini:"mediaStreamingServiceName"`
 		BackendServiceName         string `ini:"backendServiceName"`
 		AiServiceName              string `ini:"aiServiceName"`
+		MiddleServiceName          string `ini:"middleServiceName"`
 		Token                      string `ini:"token"`
 	} `ini:"SETTING"`
 	Version struct {
