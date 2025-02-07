@@ -113,6 +113,7 @@ func appRouter(r *gin.Engine) {
 		reidV1.POST("/reboot", restartServer)
 		reidV1.POST("/servicectrl", restartService)
 		reidV1.POST("/log/download", downloadLog)
+		reidV1.POST("/upload/patch", patchService)
 	}
 }
 
@@ -384,4 +385,74 @@ func downloadLog(c *gin.Context) {
 	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filepath.Base(compressPath)))
 	log.Info(fmt.Sprintf("Compress Path: %s, Header: %v", compressPath, c.Writer.Header().Values("Content-Type")))
 	c.File(compressPath)
+}
+
+type PatchResponseST struct {
+	Code       int    `json:"code"`
+	Success    bool   `json:"success"`
+	Message    string `json:"message"`
+	ErrorCode  string `json:"errorCode"`
+	ErrorTitle string `json:"errorTitle"`
+	ExtraData  any    `json:"extraData"`
+}
+
+type PatchRequestST struct {
+	FileData []byte `form:"file"`
+	Hash     string `form:"hash"`
+}
+
+func patchService(c *gin.Context) {
+	response := PatchResponseST{
+		Code:       400,
+		Message:    "현재 지원하지 않는 기능입니다.",
+		Success:    false,
+		ErrorCode:  "",
+		ErrorTitle: "지원 제한 기능",
+		ExtraData:  nil,
+	}
+	c.JSON(400, response)
+	//if IsPatchProgress() == PROGRESSING {
+	//	response := PatchResponseST{
+	//		Code:       400,
+	//		Message:    "업데이트가 이미 진행중입니다.",
+	//		Success:    false,
+	//		ErrorCode:  "",
+	//		ErrorTitle: "업데이트 중복 요청",
+	//		ExtraData:  nil,
+	//	}
+	//	c.JSON(400, response)
+	//	return
+	//}
+	//
+	//fileHash, err := c.FormFile("hash")
+	//if err != nil {
+	//	log.Error(err)
+	//	response := PatchResponseST{
+	//		Code:       400,
+	//		Message:    "해쉬값이 없습니다.",
+	//		Success:    false,
+	//		ErrorCode:  "",
+	//		ErrorTitle: "해쉬값 없음",
+	//		ExtraData:  nil,
+	//	}
+	//	c.JSON(400, response)
+	//	return
+	//}
+	//
+	//encryptZipFile, err := c.FormFile("hash")
+	//if err != nil {
+	//	log.Error(err)
+	//	response := PatchResponseST{
+	//		Code:       400,
+	//		Message:    "파일이 없습니다.",
+	//		Success:    false,
+	//		ErrorCode:  "",
+	//		ErrorTitle: "파일 없음",
+	//		ExtraData:  nil,
+	//	}
+	//	c.JSON(400, response)
+	//	return
+	//}
+	//
+	//DecryptZipFile(encryptZipFile)
 }
