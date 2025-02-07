@@ -89,6 +89,7 @@ type SettingConfig struct {
 	Category struct {
 		AI              string `ini:"ai"`
 		Backend         string `ini:"backend"`
+		PastBackend     string `ini:"past_backend"`
 		Frontend        string `ini:"frontend"`
 		ImageProcessing string `ini:"imageProcessing"`
 		MediaStreaming  string `ini:"mediaStreaming"`

@@ -21,6 +21,7 @@ var (
 	aiLogName              = configs.SC.Category.AI
 	frontendLogName        = configs.SC.Category.Frontend
 	backendLogName         = configs.SC.Category.Backend
+	pastBackendLogName     = configs.SC.Category.PastBackend
 	backendAuthLogName     = fmt.Sprintf("%s_auth", configs.SC.Category.Backend)
 	backendGatewayLogName  = fmt.Sprintf("%s_gateway", configs.SC.Category.Backend)
 	backendMainLogName     = fmt.Sprintf("%s_main", configs.SC.Category.Backend)
