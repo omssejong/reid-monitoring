@@ -1,5 +1,5 @@
 CONFIG:
-  ConfigPath: /usr/local/oms/omeye/omeye2/sc/monitoring/conf.d/monitoring-prod.ini
+  ConfigPath: /usr/local/oms/omeye/omeye2/monitoring/conf.d/monitoring-prod.ini
 REDIS:
   RedisContainerName: oms-redis
   RedisHost: localhost
