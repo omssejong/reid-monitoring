@@ -1,11 +1,13 @@
 package util
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 )
 
@@ -401,58 +403,171 @@ type PatchRequestST struct {
 	Hash     string `form:"hash"`
 }
 
+// file upload = formdata
 func patchService(c *gin.Context) {
+	log.Info("start reid patch")
+	encryptedFile, err := c.FormFile("file")
+	if err != nil {
+		log.Error(err)
+		response := PatchResponseST{
+			Code:       400,
+			Message:    "파일이 존재하지 않습니다.",
+			Success:    false,
+			ErrorCode:  "",
+			ErrorTitle: "NotFoundFile",
+			ExtraData:  nil,
+		}
+		c.JSON(400, response)
+		return
+	}
+
+	tmpFile, err := encryptedFile.Open()
+	if err != nil {
+		log.Error(err)
+		response := PatchResponseST{
+			Code:       400,
+			Message:    "패치 파일 로드에 실패하였습니다",
+			Success:    false,
+			ErrorCode:  "",
+			ErrorTitle: "FileLoadError",
+			ExtraData:  nil,
+		}
+		c.JSON(400, response)
+		return
+	}
+
+	receiveHash, isExist := c.GetPostForm("hash")
+	if !isExist {
+		response := PatchResponseST{
+			Code:       400,
+			Message:    "해쉬 값이 존재하지 않습니다.",
+			Success:    false,
+			ErrorCode:  "",
+			ErrorTitle: "NotFoundHash",
+			ExtraData:  nil,
+		}
+		c.JSON(400, response)
+		return
+	}
+	log.Info(fmt.Sprintf("receive hash: %s", receiveHash))
+
+	patchFileBuffer := bytes.Buffer{}
+	patchFileSize, err := patchFileBuffer.ReadFrom(tmpFile)
+	if err != nil {
+		log.Error(err)
+		response := PatchResponseST{
+			Code:       400,
+			Message:    "해쉬 값이 존재하지 않습니다.",
+			Success:    false,
+			ErrorCode:  "",
+			ErrorTitle: "NotFoundHash",
+			ExtraData:  nil,
+		}
+		c.JSON(400, response)
+		return
+	}
+
+	encryptedZipFile := patchFileBuffer.Bytes()
+	copyData := make([]byte, patchFileSize)
+	_ = copy(copyData, encryptedZipFile)
+	err = checkSha256Sum(copyData, receiveHash)
+	if err != nil {
+		log.Error(err)
+		response := PatchResponseST{
+			Code:       400,
+			Message:    "해쉬 값이 일치하지 않습니다.",
+			Success:    false,
+			ErrorCode:  "",
+			ErrorTitle: "NotMatchHash",
+			ExtraData:  nil,
+		}
+		c.JSON(400, response)
+		return
+	}
+	log.Info(fmt.Sprintf("patch file size: %dbyte", patchFileSize))
+	decryptedZipFile, err := decryptZipFile(encryptedZipFile)
+	if err != nil {
+		log.Error(err)
+		response := PatchResponseST{
+			Code:       400,
+			Message:    "압축파일 추출에 실패하였습니다.",
+			Success:    false,
+			ErrorCode:  "",
+			ErrorTitle: "FailExtractedZipFile",
+			ExtraData:  nil,
+		}
+		c.JSON(400, response)
+		return
+	}
+
+	mkdirErr := os.Mkdir("temp", 0755)
+	if mkdirErr != nil {
+		log.Error(mkdirErr)
+		response := PatchResponseST{
+			Code:       500,
+			Message:    "서버에러입니다.",
+			Success:    false,
+			ErrorCode:  "",
+			ErrorTitle: "serverError",
+			ExtraData:  nil,
+		}
+		c.JSON(500, response)
+		return
+	}
+
+	//defer func() {
+	//	os.RemoveAll("temp")
+	//}()
+
+	saveZipFileErr := os.WriteFile("temp/patch.zip", decryptedZipFile, 0755)
+	if saveZipFileErr != nil {
+		log.Error(saveZipFileErr)
+		response := PatchResponseST{
+			Code:       500,
+			Message:    "서버에러입니다.",
+			Success:    false,
+			ErrorCode:  "",
+			ErrorTitle: "serverError",
+			ExtraData:  nil,
+		}
+		c.JSON(500, response)
+		return
+	}
+	unzipErr := unzipPatchFile()
+	if unzipErr != nil {
+		response := PatchResponseST{
+			Code:       400,
+			Message:    "압축 해제에 실패하였습니다.",
+			Success:    false,
+			ErrorCode:  "",
+			ErrorTitle: "FailUnzipProcess",
+			ExtraData:  nil,
+		}
+		c.JSON(400, response)
+		return
+	}
+
+	patchErr := executePatch()
+	if patchErr != nil {
+		response := PatchResponseST{
+			Code:       400,
+			Message:    "패치를 실패하였습니다.",
+			Success:    false,
+			ErrorCode:  "",
+			ErrorTitle: "FailPatchProcess",
+			ExtraData:  nil,
+		}
+		c.JSON(400, response)
+		return
+	}
+
 	response := PatchResponseST{
-		Code:       400,
-		Message:    "현재 지원하지 않는 기능입니다.",
+		Code:       200,
+		Message:    "성공적으로 패치하였습니다.",
 		Success:    false,
 		ErrorCode:  "",
-		ErrorTitle: "지원 제한 기능",
+		ErrorTitle: "PatchSuccess",
 		ExtraData:  nil,
 	}
-	c.JSON(400, response)
-	//if IsPatchProgress() == PROGRESSING {
-	//	response := PatchResponseST{
-	//		Code:       400,
-	//		Message:    "업데이트가 이미 진행중입니다.",
-	//		Success:    false,
-	//		ErrorCode:  "",
-	//		ErrorTitle: "업데이트 중복 요청",
-	//		ExtraData:  nil,
-	//	}
-	//	c.JSON(400, response)
-	//	return
-	//}
-	//
-	//fileHash, err := c.FormFile("hash")
-	//if err != nil {
-	//	log.Error(err)
-	//	response := PatchResponseST{
-	//		Code:       400,
-	//		Message:    "해쉬값이 없습니다.",
-	//		Success:    false,
-	//		ErrorCode:  "",
-	//		ErrorTitle: "해쉬값 없음",
-	//		ExtraData:  nil,
-	//	}
-	//	c.JSON(400, response)
-	//	return
-	//}
-	//
-	//encryptZipFile, err := c.FormFile("hash")
-	//if err != nil {
-	//	log.Error(err)
-	//	response := PatchResponseST{
-	//		Code:       400,
-	//		Message:    "파일이 없습니다.",
-	//		Success:    false,
-	//		ErrorCode:  "",
-	//		ErrorTitle: "파일 없음",
-	//		ExtraData:  nil,
-	//	}
-	//	c.JSON(400, response)
-	//	return
-	//}
-	//
-	//DecryptZipFile(encryptZipFile)
+	c.JSON(200, response)
 }
