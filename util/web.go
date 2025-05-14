@@ -515,9 +515,9 @@ func patchService(c *gin.Context) {
 		return
 	}
 
-	//defer func() {
-	//	os.RemoveAll("temp")
-	//}()
+	defer func() {
+		os.RemoveAll("temp")
+	}()
 
 	saveZipFileErr := os.WriteFile("temp/patch.zip", decryptedZipFile, 0755)
 	if saveZipFileErr != nil {
