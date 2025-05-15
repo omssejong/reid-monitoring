@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"github.com/rebornist/oms-monitoring/util"
 	"log"
 	"os"
@@ -11,7 +12,7 @@ import (
 )
 
 func main() {
-
+	checkDirectories()
 	//go util.MonitoringWorker()
 
 	// Start monitoring server
@@ -47,4 +48,16 @@ func main() {
 		log.Println("timeout of 5 seconds.")
 	}
 	log.Println("Server exiting")
+}
+
+func checkDirectories() {
+	_, err := os.Stat("data")
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			mkdirErr := os.Mkdir("data", 0755)
+			if mkdirErr != nil {
+				panic("not create data directory")
+			}
+		}
+	}
 }

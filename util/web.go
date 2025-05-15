@@ -358,19 +358,43 @@ func downloadLog(c *gin.Context) {
 	var request LogRequestStruct
 	if err := c.Bind(&request); err != nil {
 		log.Error(fmt.Errorf("request %v", err))
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		//c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, PatchResponseST{
+			Code:       400,
+			Success:    false,
+			Message:    "요청 데이터가 잘못되었습니다",
+			ErrorCode:  "dl-01",
+			ErrorTitle: "InvalidData",
+			ExtraData:  nil,
+		})
 		return
 	}
 
 	files, err := FilterLogFilesByDate(request.StartDate, request.EndDate)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		//c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, PatchResponseST{
+			Code:       500,
+			Success:    false,
+			Message:    "기간설정이 잘못되었습니다",
+			ErrorCode:  "dl-02",
+			ErrorTitle: "InvalidDate",
+			ExtraData:  nil,
+		})
 		return
 	}
 
 	compressPath, err := EncryptCompress(files)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		//c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, PatchResponseST{
+			Code:       500,
+			Success:    false,
+			Message:    "압축파일 생성에 실패하였습니다",
+			ErrorCode:  "dl-03",
+			ErrorTitle: "FailCreatedCompressFile",
+			ExtraData:  nil,
+		})
 		return
 	}
 

@@ -34,6 +34,7 @@ func EncryptCompress(targets []string) (string, error) {
 	zipFile, err := os.Create(fmt.Sprintf("data/log_%s.zip", currentTimeStr))
 	if err != nil {
 		log.Error(fmt.Errorf("failed to create archive: %v", err))
+		return "", err
 	}
 	defer zipFile.Close()
 
