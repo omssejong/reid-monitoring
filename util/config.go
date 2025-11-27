@@ -75,6 +75,7 @@ type SettingConfig struct {
 		ImageProcessingServiceName string `ini:"imageProcessingServiceName"`
 		MediaStreamingServiceName  string `ini:"mediaStreamingServiceName"`
 		BackendServiceName         string `ini:"backendServiceName"`
+		MiddleServerServiceName    string `ini:"middleServerServiceName,win11"`
 		AiServiceName              string `ini:"aiServiceName"`
 		MiddleServiceName          string `ini:"middleServiceName"`
 		Token                      string `ini:"token"`

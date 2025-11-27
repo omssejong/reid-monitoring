@@ -223,7 +223,7 @@ func ShutdownServer() error {
 }
 
 func MiddleserverRestart() error {
-	cmd := exec.Command("bash", "-c", fmt.Sprintf("echo %s | sudo virsh reboot win10 --mode acpi", password))
+	cmd := exec.Command("bash", "-c", fmt.Sprintf("echo %s | sudo virsh reboot %s --mode acpi", password, configs.SC.Setting.MediaStreamingServiceName))
 	err := cmd.Run()
 	if err != nil {
 		log.Error(fmt.Errorf("error rebooting middle server: %v", err))
