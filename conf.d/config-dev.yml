@@ -1,5 +1,30 @@
-CONFIG:
-  ConfigPath: /home/oms/sc/monitoring/conf.d/monitoring-dev.ini
+SETTING:
+  rootPath: /home/oms/sc
+  serverIP: localhost
+  serverPort: 4755
+  userPassword: aioms1!
+  networkName: enp4s0
+  imageProcessingServiceName: omeye2.sc_image-processing.service
+  mediaStreamingServiceName: omeye2.mediaserver.service
+  backendServiceName: omeye2.back.service,omeye2.manager.service
+  middleServerServiceName: win11
+  aiServiceName: omeye2.main.service,omeye2.rt.service,omeye2.detect.service
+  middleServiceName: middleserver
+  token: onemoresecurity20190211!
+VERSION:
+  backend: 1.0.0.0
+  frontend: 1.0.0.0
+  ai: 2.0.0.6
+  imageProcessing: 1.0.0.0
+  mediaStreaming: 1.0.0.0
+CATEGORY:
+  ai: ai
+  frontend: frontend
+  backend: back
+  past_backend: back
+  imageProcessing: image-processing
+  mediaStreaming: media-streaming
+  monitoring: monitoring
 REDIS:
   RedisContainerName: redis
   RedisHost: localhost

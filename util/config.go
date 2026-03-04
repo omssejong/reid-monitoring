@@ -3,124 +3,94 @@ package util
 import (
 	"fmt"
 	"os"
-	"path"
+	"path/filepath"
 
-	"gopkg.in/ini.v1"
 	"gopkg.in/yaml.v3"
 )
 
 func NewConfig(active string) (Config, error) {
-
-	// 기본 설정 구조체 생성
 	var config Config
 
-	// 현제 경로 확인
 	pwd, err := os.Getwd()
 	if err != nil {
 		return config, err
 	}
 
-	// YAML 파일 로드
-	yml, err := os.ReadFile(path.Join(pwd, "conf.d", fmt.Sprintf("config-%s.yml", active)))
+	raw, err := os.ReadFile(filepath.Join(pwd, "conf.d", fmt.Sprintf("config-%s.yml", active)))
 	if err != nil {
 		return config, err
 	}
 
-	// APP 설정 구조체 생성
-	var appConfig AppConfig
-	err = yaml.Unmarshal(yml, &appConfig)
-	if err != nil {
+	var fileCfg configFile
+	if err := yaml.Unmarshal(raw, &fileCfg); err != nil {
 		return config, err
 	}
 
-	var settingConfig SettingConfig
-	if err := ini.MapTo(&settingConfig, appConfig.Config.ConfigPath); err != nil {
-		return config, err
+	config.SC = SettingConfig{
+		Setting:  fileCfg.Setting,
+		Version:  fileCfg.Version,
+		Category: fileCfg.Category,
 	}
-
-	config.AC = appConfig
-	config.SC = settingConfig
+	config.Redis = fileCfg.Redis
 
 	return config, nil
 }
 
-/**
- * Config
- * 설정 파일 구조체
- *
- * @autor: Han Seong San
- * @version: 1.0.0
- * @since: 2024.01.12
- */
 type Config struct {
-	AC AppConfig
-	SC SettingConfig
+	SC    SettingConfig
+	Redis RedisConfig
 }
 
-/**
- * SettingConfig
- * 글로벌 설정 파일 구조체
- *
- * @autor: Han Seong San
- * @version: 1.0.0
- * @since: 2024.01.12
- */
 type SettingConfig struct {
-	Setting struct {
-		RootPath                   string `ini:"rootPath"`
-		ServerIP                   string `ini:"serverIP"`
-		ServerPort                 int    `ini:"serverPort"`
-		UserPassword               string `ini:"userPassword"`
-		NetworkName                string `ini:"networkName"`
-		ImageProcessingServiceName string `ini:"imageProcessingServiceName"`
-		MediaStreamingServiceName  string `ini:"mediaStreamingServiceName"`
-		BackendServiceName         string `ini:"backendServiceName"`
-		MiddleServerServiceName    string `ini:"middleServerServiceName,win11"`
-		AiServiceName              string `ini:"aiServiceName"`
-		MiddleServiceName          string `ini:"middleServiceName"`
-		Token                      string `ini:"token"`
-	} `ini:"SETTING"`
-	Version struct {
-		Frontend        string `ini:"frontend"`
-		Backend         string `ini:"backend"`
-		AI              string `ini:"ai"`
-		ImageProcessing string `ini:"imageProcessing"`
-		MediaStreaming  string `ini:"mediaStreaming"`
-	} `ini:"VERSION"`
-	Category struct {
-		AI              string `ini:"ai"`
-		Backend         string `ini:"backend"`
-		PastBackend     string `ini:"past_backend"`
-		Frontend        string `ini:"frontend"`
-		ImageProcessing string `ini:"imageProcessing"`
-		MediaStreaming  string `ini:"mediaStreaming"`
-		Monitoring      string `ini:"monitoring"`
-	} `ini:"CATEGORY"`
+	Setting  SettingSection
+	Version  VersionSection
+	Category CategorySection
 }
 
-/**
- * AppConfig
- * 앱 설정 파일 구조체
- *
- * @autor: Han Seong San
- * @version: 1.0.0
- * @since: 2024.01.12
- */
-type AppConfig struct {
-	Config AppConfigChild `yaml:"CONFIG"`
-	Redis  RedisConfig    `yaml:"REDIS"`
+type SettingSection struct {
+	RootPath                   string `yaml:"rootPath"`
+	ServerIP                   string `yaml:"serverIP"`
+	ServerPort                 int    `yaml:"serverPort"`
+	UserPassword               string `yaml:"userPassword"`
+	NetworkName                string `yaml:"networkName"`
+	ImageProcessingServiceName string `yaml:"imageProcessingServiceName"`
+	MediaStreamingServiceName  string `yaml:"mediaStreamingServiceName"`
+	BackendServiceName         string `yaml:"backendServiceName"`
+	MiddleServerServiceName    string `yaml:"middleServerServiceName"`
+	AiServiceName              string `yaml:"aiServiceName"`
+	MiddleServiceName          string `yaml:"middleServiceName"`
+	Token                      string `yaml:"token"`
 }
 
-// AppConfigChild
-type AppConfigChild struct {
-	ConfigPath string `yaml:"ConfigPath"`
+type VersionSection struct {
+	Frontend        string `yaml:"frontend"`
+	Backend         string `yaml:"backend"`
+	AI              string `yaml:"ai"`
+	ImageProcessing string `yaml:"imageProcessing"`
+	MediaStreaming  string `yaml:"mediaStreaming"`
 }
 
-// RedisConfig
+type CategorySection struct {
+	AI              string `yaml:"ai"`
+	Backend         string `yaml:"backend"`
+	PastBackend     string `yaml:"past_backend"`
+	Frontend        string `yaml:"frontend"`
+	ImageProcessing string `yaml:"imageProcessing"`
+	MediaStreaming  string `yaml:"mediaStreaming"`
+	Monitoring      string `yaml:"monitoring"`
+}
+
 type RedisConfig struct {
 	RedisContainerName string `yaml:"RedisContainerName"`
 	RedisHost          string `yaml:"RedisHost"`
 	RedisPort          int    `yaml:"RedisPort"`
 	Username           string `yaml:"Username"`
 	Password           string `yaml:"Password"`
+}
+
+type configFile struct {
+	Setting  SettingSection  `yaml:"SETTING"`
+	Version  VersionSection  `yaml:"VERSION"`
+	Category CategorySection `yaml:"CATEGORY"`
+	Redis    RedisConfig     `yaml:"REDIS"`
 }
