@@ -15,8 +15,11 @@ func GetDiskInfo() (map[string]interface{}, error) {
 	}
 
 	total := stat.Blocks * uint64(stat.Bsize)
+	// Match df semantics:
+	// - used: total - bfree
+	// - avail: bavail
 	free := stat.Bavail * uint64(stat.Bsize)
-	used := total - free
+	used := (stat.Blocks - stat.Bfree) * uint64(stat.Bsize)
 
 	diskUsageDict["total"] = total / 1024 / 1024 / 1024
 	diskUsageDict["free"] = free / 1024 / 1024 / 1024
@@ -32,12 +35,12 @@ func GetDiskUsage() (float64, error) {
 		return 0, err
 	}
 
-	total := stat.Blocks * uint64(stat.Bsize)
-	free := stat.Bavail * uint64(stat.Bsize)
-	used := total - free
-	if total == 0 {
+	used := (stat.Blocks - stat.Bfree) * uint64(stat.Bsize)
+	avail := stat.Bavail * uint64(stat.Bsize)
+	denom := used + avail
+	if denom == 0 {
 		return 0, nil
 	}
 
-	return float64(used) / float64(total) * 100, nil
+	return float64(used) / float64(denom) * 100, nil
 }
