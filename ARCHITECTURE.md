@@ -1,23 +1,21 @@
-﻿# 아키텍처
+# ?꾪궎?띿쿂
 
-## 1. 개요
+## 1. 媛쒖슂
 
-`reid-monitoring`은 OMS/ReID 배포 환경을 위한 Go 기반 모니터링 및 제어 에이전트입니다.
+`reid-monitoring`? OMS/ReID 諛고룷 ?섍꼍???꾪븳 Go 湲곕컲 紐⑤땲?곕쭅 諛??쒖뼱 ?먯씠?꾪듃?낅땲??
 
-주요 역할:
-- 서버 정보, 실시간 메트릭(SSE), 서비스 제어, 로그 다운로드, 패치 업로드용 HTTP API 제공
-- 시스템 리소스(CPU, GPU, 메모리, 디스크, 네트워크) 수집
-- 호스트 서비스 및 Docker 기반 서비스 제어
-- 다운로드용 로그 암호화/압축 패키징
+二쇱슂 ??븷:
+- ?쒕쾭 ?뺣낫, ?ㅼ떆媛?硫뷀듃由?SSE), ?쒕퉬???쒖뼱, 濡쒓렇 ?ㅼ슫濡쒕뱶, ?⑥튂 ?낅줈?쒖슜 HTTP API ?쒓났
+- ?쒖뒪??由ъ냼??CPU, GPU, 硫붾え由? ?붿뒪?? ?ㅽ듃?뚰겕) ?섏쭛
+- ?몄뒪???쒕퉬??諛?Docker 湲곕컲 ?쒕퉬???쒖뼱
+- ?ㅼ슫濡쒕뱶??濡쒓렇 ?뷀샇???뺤텞 ?⑦궎吏?
+?듭떖 ?ㅽ깮:
+- ?몄뼱/?고??? Go 1.21.6
+- ???꾨젅?꾩썙?? Gin
+- 硫뷀듃由??섏쭛: NVML(gonvml), Linux procfs/sysfs(`/proc`, `/sys`) + ?쒖? ?쇱씠釉뚮윭由?- 濡쒓퉭: logrus + lumberjack
+- ?좏깮??Pub/Sub: Redis ?대씪?댁뼵???섑띁
 
-핵심 스택:
-- 언어/런타임: Go 1.21.6
-- 웹 프레임워크: Gin
-- 메트릭 수집: gopsutil, NVML(gonvml), Linux procfs/명령어(`/proc`, `ifconfig`, `route`, `ethtool`)
-- 로깅: logrus + lumberjack
-- 선택적 Pub/Sub: Redis 클라이언트 래퍼
-
-## 2. 프로젝트 구조
+## 2. ?꾨줈?앺듃 援ъ“
 
 ```text
 .
@@ -30,115 +28,104 @@
 |  |- monitoring-{dev,local,prod}.ini
 |  `- docker-compose.yml
 `- util/
-   |- common.go        # 전역 설정/부트스트랩 변수
-   |- config.go        # yaml + ini 로딩
-   |- web.go           # HTTP 라우트 + 핸들러
-   |- middelware.go    # CORS/보안/SSE 미들웨어
-   |- sse.go           # 1초 주기 스트리밍 메트릭 루프
-   |- service.go       # systemctl/docker/reboot/shutdown 제어
-   |- cpu.go           # CPU 메타데이터/사용률
-   |- gpu.go           # GPU 메타데이터/사용률(NVML)
-   |- memory.go        # 메모리 통계
-   |- disk.go          # 디스크 통계
-   |- network.go       # 인터페이스 정보/트래픽/대역폭
-   |- file.go          # 로그 파일 필터링/검색/정리
-   |- compress.go      # 로그 암호화 + zip 압축
-   |- patch.go         # 패치 해시검증/복호화/압축해제/실행
-   |- redis.go         # Redis 래퍼
-   |- logger.go        # 로깅 추상화
-   `- worker.go        # 레거시 워커(현재 주석 처리)
+   |- common.go        # ?꾩뿭 ?ㅼ젙/遺?몄뒪?몃옪 蹂??   |- config.go        # yaml + ini 濡쒕뵫
+   |- web.go           # HTTP ?쇱슦??+ ?몃뱾??   |- middelware.go    # CORS/蹂댁븞/SSE 誘몃뱾?⑥뼱
+   |- sse.go           # 1珥?二쇨린 ?ㅽ듃由щ컢 硫뷀듃由?猷⑦봽
+   |- service.go       # systemctl/docker/reboot/shutdown ?쒖뼱
+   |- cpu.go           # CPU 硫뷀??곗씠???ъ슜瑜?   |- gpu.go           # GPU 硫뷀??곗씠???ъ슜瑜?NVML)
+   |- memory.go        # 硫붾え由??듦퀎
+   |- disk.go          # ?붿뒪???듦퀎
+   |- network.go       # ?명꽣?섏씠???뺣낫/?몃옒?????룺
+   |- file.go          # 濡쒓렇 ?뚯씪 ?꾪꽣留?寃???뺣━
+   |- compress.go      # 濡쒓렇 ?뷀샇??+ zip ?뺤텞
+   |- patch.go         # ?⑥튂 ?댁떆寃利?蹂듯샇???뺤텞?댁젣/?ㅽ뻾
+   |- redis.go         # Redis ?섑띁
+   |- logger.go        # 濡쒓퉭 異붿긽??   `- worker.go        # ?덇굅???뚯빱(?꾩옱 二쇱꽍 泥섎━)
 ```
 
-## 3. 시작 흐름
+## 3. ?쒖옉 ?먮쫫
 
-1. `main.go`가 `data/` 디렉터리가 없으면 생성합니다.
-2. `util` 패키지 import 시 `util/common.go` 전역 초기화가 실행됩니다.
-   - CLI 인자(`os.Args[1]`)의 활성 프로파일로 `NewConfig(active)` 호출
-   - `conf.d/config-<active>.yml`과 참조된 INI 설정 로딩
-   - 전역 경로/서비스명/비밀번호/토큰/네트워크 인터페이스 설정
-   - 로거 및 Redis 클라이언트 초기화
-3. `util.WebApp()`이 Gin 라우터와 미들웨어를 구성합니다.
-4. `SC.Setting.ServerPort` 포트에서 HTTP 서버를 시작합니다.
-5. SIGINT/SIGTERM 수신 시 5초 타임아웃으로 graceful shutdown을 수행합니다.
+1. `main.go`媛 `data/` ?붾젆?곕━媛 ?놁쑝硫??앹꽦?⑸땲??
+2. `util` ?⑦궎吏 import ??`util/common.go` ?꾩뿭 珥덇린?붽? ?ㅽ뻾?⑸땲??
+   - CLI ?몄옄(`os.Args[1]`)???쒖꽦 ?꾨줈?뚯씪濡?`NewConfig(active)` ?몄텧
+   - `conf.d/config-<active>.yml`怨?李몄“??INI ?ㅼ젙 濡쒕뵫
+   - ?꾩뿭 寃쎈줈/?쒕퉬?ㅻ챸/鍮꾨?踰덊샇/?좏겙/?ㅽ듃?뚰겕 ?명꽣?섏씠???ㅼ젙
+   - 濡쒓굅 諛?Redis ?대씪?댁뼵??珥덇린??3. `util.WebApp()`??Gin ?쇱슦?곗? 誘몃뱾?⑥뼱瑜?援ъ꽦?⑸땲??
+4. `SC.Setting.ServerPort` ?ы듃?먯꽌 HTTP ?쒕쾭瑜??쒖옉?⑸땲??
+5. SIGINT/SIGTERM ?섏떊 ??5珥???꾩븘?껋쑝濡?graceful shutdown???섑뻾?⑸땲??
 
-## 4. 설정 모델
+## 4. ?ㅼ젙 紐⑤뜽
 
-설정은 2단계로 해석됩니다.
-- 1단계: `conf.d/config-<profile>.yml` (`CONFIG.ConfigPath`, `REDIS.*`)
-- 2단계: `ConfigPath`가 가리키는 INI (`[SETTING]`, `[VERSION]`, `[CATEGORY]`)
+?ㅼ젙? 2?④퀎濡??댁꽍?⑸땲??
+- 1?④퀎: `conf.d/config-<profile>.yml` (`CONFIG.ConfigPath`, `REDIS.*`)
+- 2?④퀎: `ConfigPath`媛 媛由ы궎??INI (`[SETTING]`, `[VERSION]`, `[CATEGORY]`)
 
-저장소 내 프로파일:
+??μ냼 ???꾨줈?뚯씪:
 - `dev`, `local`, `prod`, `docker`
 
-주요 런타임 설정값:
-- 서버 포트 / 네트워크 인터페이스
-- backend/AI/media/image processing 서비스명
-- 루트 및 카테고리 경로
-- 권한 명령 실행에 사용되는 사용자 비밀번호
-- 로그 암호화 키 재료로 쓰이는 토큰
+二쇱슂 ?고????ㅼ젙媛?
+- ?쒕쾭 ?ы듃 / ?ㅽ듃?뚰겕 ?명꽣?섏씠??- backend/AI/media/image processing ?쒕퉬?ㅻ챸
+- 猷⑦듃 諛?移댄뀒怨좊━ 寃쎈줈
+- 沅뚰븳 紐낅졊 ?ㅽ뻾???ъ슜?섎뒗 ?ъ슜??鍮꾨?踰덊샇
+- 濡쒓렇 ?뷀샇?????щ즺濡??곗씠???좏겙
 
-## 5. HTTP API 표면
+## 5. HTTP API ?쒕㈃
 
-기본 그룹: `/monitoring/mgmt`
+湲곕낯 洹몃９: `/monitoring/mgmt`
 
 - `GET /server-info`
-  - 서버 하드웨어/네트워크/버전 스냅샷 조회
+  - ?쒕쾭 ?섎뱶?⑥뼱/?ㅽ듃?뚰겕/踰꾩쟾 ?ㅻ깄??議고쉶
 - `GET /info`
-  - 1초 주기 실시간 메트릭 SSE 스트림
-- `POST /reboot`
-  - 호스트 서버 재부팅
-- `POST /servicectrl`
-  - 서비스 타입 기준 대상 서비스 재시작
-- `POST /log/download`
-  - 날짜 범위 로그 필터링 후 암호화/압축하여 파일 다운로드 응답
+  - 1珥?二쇨린 ?ㅼ떆媛?硫뷀듃由?SSE ?ㅽ듃由?- `POST /reboot`
+  - ?몄뒪???쒕쾭 ?щ???- `POST /servicectrl`
+  - ?쒕퉬?????湲곗? ????쒕퉬???ъ떆??- `POST /log/download`
+  - ?좎쭨 踰붿쐞 濡쒓렇 ?꾪꽣留????뷀샇???뺤텞?섏뿬 ?뚯씪 ?ㅼ슫濡쒕뱶 ?묐떟
 - `POST /upload/patch`
-  - 암호화된 패치 파일과 해시를 받아 검증/복호화/압축해제/스크립트 실행
+  - ?뷀샇?붾맂 ?⑥튂 ?뚯씪怨??댁떆瑜?諛쏆븘 寃利?蹂듯샇???뺤텞?댁젣/?ㅽ겕由쏀듃 ?ㅽ뻾
 
-## 6. 내부 컴포넌트
+## 6. ?대? 而댄룷?뚰듃
 
-### 6.1 HTTP 계층 (`util/web.go`, `util/middelware.go`)
-- Gin release 모드 사용
-- 미들웨어: 기본 로깅/리커버리(Gin), 보안 헤더, 개방형 CORS, SSE 헤더
-- 핸들러가 메트릭/서비스/로그/패치 모듈을 오케스트레이션
-
-### 6.2 메트릭 계층 (`cpu.go`, `gpu.go`, `memory.go`, `disk.go`, `network.go`, `sse.go`)
-- Pull 기반 메트릭 수집
-- SSE 루프가 1초마다 다음 정보를 전송:
+### 6.1 HTTP 怨꾩링 (`util/web.go`, `util/middelware.go`)
+- Gin release 紐⑤뱶 ?ъ슜
+- 誘몃뱾?⑥뼱: 湲곕낯 濡쒓퉭/由ъ빱踰꾨━(Gin), 蹂댁븞 ?ㅻ뜑, 媛쒕갑??CORS, SSE ?ㅻ뜑
+- ?몃뱾?ш? 硫뷀듃由??쒕퉬??濡쒓렇/?⑥튂 紐⑤뱢???ㅼ??ㅽ듃?덉씠??
+### 6.2 硫뷀듃由?怨꾩링 (`cpu.go`, `gpu.go`, `memory.go`, `disk.go`, `network.go`, `sse.go`)
+- Pull 湲곕컲 硫뷀듃由??섏쭛
+- SSE 猷⑦봽媛 1珥덈쭏???ㅼ쓬 ?뺣낫瑜??꾩넚:
   - uptime
-  - 서비스 상태
-  - CPU/GPU/메모리/디스크 사용률
-  - 네트워크 대역폭 변화량(uplink/downlink/total)
+  - ?쒕퉬???곹깭
+  - CPU/GPU/硫붾え由??붿뒪???ъ슜瑜?  - ?ㅽ듃?뚰겕 ???룺 蹂?붾웾(uplink/downlink/total)
 
-### 6.3 서비스 제어 계층 (`service.go`)
-- `bash -c` 기반 셸 명령으로 sudo/systemctl/docker/virsh/reboot/shutdown 실행
-- system service와 docker target 모두 지원
+### 6.3 ?쒕퉬???쒖뼱 怨꾩링 (`service.go`)
+- `bash -c` 湲곕컲 ??紐낅졊?쇰줈 sudo/systemctl/docker/virsh/reboot/shutdown ?ㅽ뻾
+- system service? docker target 紐⑤몢 吏??
+### 6.4 濡쒓렇 ?⑦궎吏?怨꾩링 (`file.go`, `compress.go`)
+- ?좎쭨 踰붿쐞 湲곗? 濡쒓렇 + 怨좎젙 ?쒖뒪??濡쒓렇 ?좏깮
+- ?뚯씪蹂?AES CFB ?뷀샇????`data/` ?섏쐞 zip ?앹꽦
+- API ?ㅼ슫濡쒕뱶 ?묐떟??寃쎈줈 諛섑솚
 
-### 6.4 로그 패키징 계층 (`file.go`, `compress.go`)
-- 날짜 범위 기준 로그 + 고정 시스템 로그 선택
-- 파일별 AES CFB 암호화 후 `data/` 하위 zip 생성
-- API 다운로드 응답용 경로 반환
+### 6.5 ?⑥튂 怨꾩링 (`patch.go`, `web.go` ?쇰?)
+- ?낅줈???뚯씪 + SHA-256 ?댁떆 ?섏떊
+- ?댁떆 寃利?- ?섏씠濡쒕뱶 蹂듯샇??AES-CBC, 肄붾뱶 ??怨좎젙 key/iv ?ъ슜)
+- `temp/patch.zip` ?앹꽦, ?뺤텞 ?댁젣 ??`temp/patch_script.sh` ?ㅽ뻾
 
-### 6.5 패치 계층 (`patch.go`, `web.go` 일부)
-- 업로드 파일 + SHA-256 해시 수신
-- 해시 검증
-- 페이로드 복호화(AES-CBC, 코드 내 고정 key/iv 사용)
-- `temp/patch.zip` 생성, 압축 해제 후 `temp/patch_script.sh` 실행
+### 6.6 ?듯빀 ?좏떥由ы떚 (`redis.go`, `logger.go`)
+- Redis ?섑띁??set/get/delete/publish ?쒓났(?꾩옱???덇굅???뚯빱 寃쎈줈?먯꽌 二??ъ슜)
+- 而ㅼ뒪? 濡쒓굅??logrus ?섑븨 + lumberjack 湲곕컲 濡쒗뀒?댁뀡
 
-### 6.6 통합 유틸리티 (`redis.go`, `logger.go`)
-- Redis 래퍼는 set/get/delete/publish 제공(현재는 레거시 워커 경로에서 주 사용)
-- 커스텀 로거는 logrus 래핑 + lumberjack 기반 로테이션
+## 7. ?고???OS 媛??
+二???곸? Linux ?고??꾩엯?덈떎.
+- `/proc/uptime`, `/proc/net/dev` ?ъ슜
+- `ifconfig`, `route`, `ethtool`, `bash`, `systemctl`, `sudo`, `docker`, `virsh` 紐낅졊 ?섏〈
+- GPU 硫뷀듃由?쓣 ?꾪빐 NVML ?꾩슂
 
-## 7. 런타임/OS 가정
+`omeye2.sc_monitoring.service`??systemd ?쒕퉬???좊떅 ?덉떆媛 ?ы븿?섏뼱 ?덉뒿?덈떎.
 
-주 대상은 Linux 런타임입니다.
-- `/proc/uptime`, `/proc/net/dev` 사용
-- `ifconfig`, `route`, `ethtool`, `bash`, `systemctl`, `sudo`, `docker`, `virsh` 명령 의존
-- GPU 메트릭을 위해 NVML 필요
+## 8. 寃고빀??硫붾え
 
-`omeye2.sc_monitoring.service`에 systemd 서비스 유닛 예시가 포함되어 있습니다.
+- `util/common.go`媛 ?⑦궎吏 ?꾩뿭 珥덇린??+ `os.Args[1]`???섏〈?섏뿬 遺??寃고빀?꾧? ?믪뒿?덈떎.
+- ?몃뱾?ш? ?꾩뿭 怨듭쑀 ?곹깭(`configs`, 寃쎈줈, 鍮꾨?踰덊샇, logger, redis client)??媛뺥븯寃??섏〈?⑸땲??
+- ?遺遺??⑥닔 以묒떖 ?몄텧 援ъ“濡?怨꾩링???뺢퀬 異붿긽??源딆씠????뒿?덈떎.
 
-## 8. 결합도 메모
 
-- `util/common.go`가 패키지 전역 초기화 + `os.Args[1]`에 의존하여 부팅 결합도가 높습니다.
-- 핸들러가 전역 공유 상태(`configs`, 경로, 비밀번호, logger, redis client)에 강하게 의존합니다.
-- 대부분 함수 중심 호출 구조로 계층이 얕고 추상화 깊이는 낮습니다.
+

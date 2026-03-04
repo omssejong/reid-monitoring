@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"errors"
-	"github.com/rebornist/oms-monitoring/util"
+	"github.com/kyeongbin-oms/reid-monitoring/util"
 	"log"
 	"os"
 	"os/signal"

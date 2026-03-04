@@ -1,15 +1,11 @@
-module github.com/rebornist/oms-monitoring
+module github.com/kyeongbin-oms/reid-monitoring
 
-go 1.21.6
+go 1.26.0
 
 require (
 	github.com/gin-gonic/gin v1.10.0
 	github.com/mindprince/gonvml v0.0.0-20211002210717-ac0b66419a41
-	github.com/redis/go-redis/v9 v9.5.3
-	github.com/shirou/gopsutil/v4 v4.24.5
-	github.com/sirupsen/logrus v1.9.3
 	gopkg.in/ini.v1 v1.67.0
-	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -49,3 +45,5 @@ require (
 	golang.org/x/text v0.15.0 // indirect
 	google.golang.org/protobuf v1.34.1 // indirect
 )
+
+

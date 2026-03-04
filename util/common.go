@@ -15,7 +15,6 @@ var (
 	mediaStreamingPath     = fmt.Sprintf("%s/%s", rootPath, configs.SC.Category.MediaStreaming)
 	monitoringPath         = fmt.Sprintf("%s/%s", rootPath, configs.SC.Category.Monitoring)
 	logPath                = fmt.Sprintf("%s/%s", rootPath, "log")
-	redisClient            = NewRedisClient(fmt.Sprintf("%s:%d", configs.AC.Redis.RedisHost, configs.AC.Redis.RedisPort), configs.AC.Redis.Password)
 	networkName            = configs.SC.Setting.NetworkName
 	monitoringChannelName  = "selective_server_status"
 	aiLogName              = configs.SC.Category.AI
@@ -34,7 +33,7 @@ var (
 	monitoringLogName      = configs.SC.Category.Monitoring
 	log                    = NewLogger(logPath, monitoringLogName)
 	password               = configs.SC.Setting.UserPassword
-	encryptKey             = []byte(configs.SC.Setting.Token) // 암호화 키
+	encryptKey             = []byte(configs.SC.Setting.Token) // ?뷀샇????
 	monitoringTarget       = fmt.Sprintf(
 		"%s,%s,%s",
 		configs.SC.Setting.MediaStreamingServiceName,

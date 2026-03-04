@@ -1,90 +1,103 @@
 package util
 
 import (
+	"bufio"
 	"fmt"
-	"github.com/shirou/gopsutil/v4/mem"
+	"os"
+	"strconv"
+	"strings"
 )
 
-/**
- * GetTotalMemorySize
- * 전체 메모리 크기를 가져오는 함수
- *
- * @param: void
- * @return: float64, error
- *
- * @autor: Han Seong San
- * @since: 2024.06.19
- * @version: 1.0.0
- */
+type memInfo struct {
+	totalBytes     uint64
+	availableBytes uint64
+	freeBytes      uint64
+}
+
 func GetTotalMemorySize() (float64, error) {
-	// 메모리 사용량을 가져옴
-	vmStat, err := mem.VirtualMemory()
+	info, err := readMemInfo()
 	if err != nil {
 		log.Error(fmt.Errorf("fetching memory usage: %v", err))
 		return 0, err
 	}
-	return float64(vmStat.Total / 1024 / 1024 / 1024), nil
+	return bytesToGB(info.totalBytes), nil
 }
 
-/**
- * GetUsedMemorySize
- * 사용중인 메모리 크기를 가져오는 함수
- *
- * @param: void
- * @return: float64, error
- *
- * @autor: Han Seong San
- * @since: 2024.06.19
- * @version: 1.0.0
- */
 func GetUsedMemorySize() (float64, error) {
-	// 메모리 사용량을 가져옴
-	vmStat, err := mem.VirtualMemory()
+	info, err := readMemInfo()
 	if err != nil {
 		log.Error(fmt.Errorf("fetching memory usage: %v", err))
 		return 0, err
 	}
-	return float64(vmStat.Used / 1024 / 1024 / 1024), nil
+	used := info.totalBytes - info.availableBytes
+	return bytesToGB(used), nil
 }
 
-/**
- * GetFreeMemorySize
- * 사용 가능한 메모리 크기를 가져오는 함수
- *
- * @param: void
- * @return: float64, error
- *
- * @autor: Han Seong San
- * @since: 2024.06.19
- * @version: 1.0.0
- */
 func GetFreeMemorySize() (float64, error) {
-	// 메모리 사용량을 가져옴
-	vmStat, err := mem.VirtualMemory()
+	info, err := readMemInfo()
 	if err != nil {
 		log.Error(fmt.Errorf("fetching memory usage: %v", err))
 		return 0, err
 	}
-	return float64(vmStat.Free / 1024 / 1024 / 1024), nil
+	return bytesToGB(info.freeBytes), nil
 }
 
-/**
- * GetMemoryUsage
- * 메모리 사용량을 가져오는 함수
- *
- * @param: void
- * @return: float64, error
- *
- * @autor: Han Seong San
- * @since: 2024.06.19
- * @version: 1.0.0
- */
 func GetMemoryUsage() (float64, error) {
-	// 메모리 사용량을 가져옴
-	vmStat, err := mem.VirtualMemory()
+	info, err := readMemInfo()
 	if err != nil {
 		log.Error(fmt.Errorf("fetching memory usage: %v", err))
 		return 0, err
 	}
-	return vmStat.UsedPercent, nil
+	if info.totalBytes == 0 {
+		return 0, nil
+	}
+	used := info.totalBytes - info.availableBytes
+	return float64(used) / float64(info.totalBytes) * 100, nil
+}
+
+func readMemInfo() (memInfo, error) {
+	file, err := os.Open("/proc/meminfo")
+	if err != nil {
+		return memInfo{}, err
+	}
+	defer file.Close()
+
+	values := make(map[string]uint64)
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		parts := strings.Fields(line)
+		if len(parts) < 2 {
+			continue
+		}
+		key := strings.TrimSuffix(parts[0], ":")
+		val, err := strconv.ParseUint(parts[1], 10, 64)
+		if err != nil {
+			continue
+		}
+		values[key] = val * 1024
+	}
+	if err := scanner.Err(); err != nil {
+		return memInfo{}, err
+	}
+
+	total := values["MemTotal"]
+	if total == 0 {
+		return memInfo{}, fmt.Errorf("MemTotal not found")
+	}
+
+	available := values["MemAvailable"]
+	if available == 0 {
+		available = values["MemFree"] + values["Buffers"] + values["Cached"]
+	}
+
+	return memInfo{
+		totalBytes:     total,
+		availableBytes: available,
+		freeBytes:      values["MemFree"],
+	}, nil
+}
+
+func bytesToGB(v uint64) float64 {
+	return float64(v) / 1024 / 1024 / 1024
 }
