@@ -35,7 +35,7 @@ getInfo:
 func systemInfos(before NetworkUsage) (map[string]any, NetworkUsage, error) {
 	usage := NetworkUsage{}
 	temp := make(map[string]any)
-	temp["monitorVersion"] = "1.17"
+	temp["monitorVersion"] = "2.0"
 	upTime, err := getServerAliveTime()
 	if err != nil {
 		return temp, usage, err

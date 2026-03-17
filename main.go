@@ -3,18 +3,17 @@ package main
 import (
 	"context"
 	"errors"
-	"github.com/kyeongbin-oms/reid-monitoring/util"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/kyeongbin-oms/reid-monitoring/util"
 )
 
 func main() {
 	checkDirectories()
-	//go util.MonitoringWorker()
-
 	// Start monitoring server
 	srv := util.WebApp()
 	go func() {

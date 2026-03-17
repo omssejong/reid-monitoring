@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/gin-gonic/gin"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+
+	"github.com/gin-gonic/gin"
 )
 
 /**
@@ -112,6 +113,7 @@ func appRouter(r *gin.Engine) {
 	{
 		reidV1.GET("/server-info", reidServerInfo)
 		reidV1.GET("/info", SseMiddleware(), sseInfo)
+		reidV1.GET("/get-info", httpInfo) // main server 에서 analyze server 정보 가져오는 api
 		reidV1.POST("/reboot", restartServer)
 		reidV1.POST("/servicectrl", restartService)
 		reidV1.POST("/log/download", downloadLog)
@@ -238,6 +240,25 @@ func sseInfo(c *gin.Context) {
 				return false
 			}
 			c.SSEvent("message", info)
+			return true
+		}
+	})
+}
+
+func httpInfo(c *gin.Context) {
+	ctx, cancelCtx := context.WithCancel(context.Background())
+	defer cancelCtx()
+	systemInfo := make(chan map[string]any)
+	go GetSystemInfo(ctx, systemInfo)
+	//c.Writer.Flush()
+	c.Stream(func(w io.Writer) bool {
+		select {
+		case info := <-systemInfo:
+			if v, ok := info["error"]; ok {
+				c.JSON(500, gin.H{"error": v.(error).Error()})
+				return false
+			}
+			c.JSON(200, info)
 			return true
 		}
 	})
@@ -405,10 +426,13 @@ func downloadLog(c *gin.Context) {
 	// response.Data = map[string]interface{}{
 	// 	"path": filepath.Join(monitoringPath, compressPath),
 	// }
-
 	// c.JSON(response.Code, response)
+
+	fileStat, _ := os.Stat(compressPath)
+
 	c.Header("Content-Type", "application/octet-stream")
 	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filepath.Base(compressPath)))
+	c.Header("Content-Length", fmt.Sprintf("%d", fileStat.Size()))
 	log.Info(fmt.Sprintf("Compress Path: %s, Header: %v", compressPath, c.Writer.Header().Values("Content-Type")))
 	c.File(compressPath)
 }
