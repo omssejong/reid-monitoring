@@ -6,7 +6,7 @@ import (
 )
 
 var (
-	configs, _             = NewConfig(os.Args[1])
+	configs, _             = NewConfig(configFileArg())
 	rootPath               = configs.SC.Setting.RootPath
 	aiPath                 = fmt.Sprintf("%s/%s", rootPath, configs.SC.Category.AI)
 	frontendPath           = fmt.Sprintf("%s/%s", rootPath, configs.SC.Category.Frontend)
@@ -41,3 +41,10 @@ var (
 		configs.SC.Setting.AiServiceName,
 	)
 )
+
+func configFileArg() string {
+	if len(os.Args) > 1 {
+		return os.Args[1]
+	}
+	return ""
+}
