@@ -126,7 +126,7 @@ func appRouter(r *gin.Engine) {
 		reidV1.POST("/delete/files", deleteFiles)
 		reidV1.POST("/upload/patch", patchService)
 	}
-	log.Info("version 1.0.0.260406")
+	log.Info("version 1.0.0.260407")
 }
 
 // Server Information API
