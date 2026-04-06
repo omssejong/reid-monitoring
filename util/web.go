@@ -121,6 +121,7 @@ func appRouter(r *gin.Engine) {
 		reidV1.GET("/get-info", httpInfo) // main server 에서 analyze server 정보 가져오는 api
 		reidV1.POST("/reboot", restartServer)
 		reidV1.POST("/servicectrl", serviceControl)
+		reidV1.POST("/shutdown", shutdownServer)
 		reidV1.POST("/log/download", downloadLog)
 		reidV1.POST("/delete/files", deleteFiles)
 		reidV1.POST("/upload/patch", patchService)
