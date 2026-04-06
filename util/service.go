@@ -136,9 +136,10 @@ func GetServiceStatus() ([]map[string]interface{}, error) {
 func RestartService(serviceName string) error {
 	var command string
 	if strings.Contains(serviceName, "docker") {
-		command = fmt.Sprintf("echo %s | sudo -S docker compose -f %s restart", password, fmt.Sprintf("%s/backend/docker-compose.yml", configs.SC.Setting.RootPath))
+		// TODO: docker compose 관련 재시작은 서비스 파일로 등록
+		command = fmt.Sprintf("docker compose -f %s restart", fmt.Sprintf("%s/backend/docker-compose.yml", configs.SC.Setting.RootPath))
 	} else {
-		command = fmt.Sprintf("echo %s | sudo -S systemctl restart %s", password, serviceName)
+		command = fmt.Sprintf("systemctl restart %s", serviceName)
 	}
 	cmd := exec.Command("bash", "-c", command)
 	log.Info(fmt.Sprintf("Restarting Service: %s", command))
@@ -164,9 +165,9 @@ func RestartService(serviceName string) error {
 func StopService(serviceName string) error {
 	var command string
 	if strings.Contains(serviceName, "docker") {
-		command = fmt.Sprintf("echo %s | sudo -S docker compose -f %s stop", password, fmt.Sprintf("%s/conf.d/docker-compose.yml", configs.SC.Setting.RootPath))
+		command = fmt.Sprintf("docker compose -f %s stop", fmt.Sprintf("%s/conf.d/docker-compose.yml", configs.SC.Setting.RootPath))
 	} else {
-		command = fmt.Sprintf("echo %s | sudo -S systemctl stop %s", password, serviceName)
+		command = fmt.Sprintf("systemctl stop %s", serviceName)
 	}
 	cmd := exec.Command("bash", "-c", command)
 	log.Info(fmt.Sprintf("Stopping Service: %s", command))
@@ -192,9 +193,9 @@ func StopService(serviceName string) error {
 func StartService(serviceName string) error {
 	var command string
 	if strings.Contains(serviceName, "docker") {
-		command = fmt.Sprintf("echo %s | sudo -S docker compose -f %s start", password, fmt.Sprintf("%s/conf.d/docker-compose.yml", configs.SC.Setting.RootPath))
+		command = fmt.Sprintf("docker compose -f %s start", fmt.Sprintf("%s/conf.d/docker-compose.yml", configs.SC.Setting.RootPath))
 	} else {
-		command = fmt.Sprintf("echo %s | sudo -S systemctl start %s", password, serviceName)
+		command = fmt.Sprintf("systemctl start %s", serviceName)
 	}
 	cmd := exec.Command("bash", "-c", command)
 	log.Info(fmt.Sprintf("Starting Service: %s", command))
@@ -217,7 +218,7 @@ func StartService(serviceName string) error {
  * @since: 2024.06.20
  */
 func RestartServer() error {
-	cmd := exec.Command("bash", "-c", fmt.Sprintf("echo %s | sudo -S reboot", password))
+	cmd := exec.Command("bash", "-c", "reboot")
 	err := cmd.Run()
 	if err != nil {
 		log.Error(fmt.Errorf("restarting server: %v", err))
@@ -237,7 +238,7 @@ func RestartServer() error {
  * @since: 2024.06.20
  */
 func ShutdownServer() error {
-	cmd := exec.Command("bash", "-c", fmt.Sprintf("echo %s | sudo -S shutdown now", password))
+	cmd := exec.Command("bash", "-c", "shutdown now")
 	err := cmd.Run()
 	if err != nil {
 		log.Error(fmt.Errorf("shutting down server: %v", err))

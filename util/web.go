@@ -55,6 +55,10 @@ type ResponseListST struct {
 	Success bool     `json:"success"`
 }
 
+type DeleteFilesRequestST struct {
+	Paths []string `json:"paths"`
+}
+
 /**
  * WebApp
  * Web Application 설정 함수
@@ -118,8 +122,10 @@ func appRouter(r *gin.Engine) {
 		reidV1.POST("/reboot", restartServer)
 		reidV1.POST("/servicectrl", serviceControl)
 		reidV1.POST("/log/download", downloadLog)
+		reidV1.POST("/delete/files", deleteFiles)
 		reidV1.POST("/upload/patch", patchService)
 	}
+	log.Info("version 1.0.0.260406")
 }
 
 // Server Information API
@@ -441,6 +447,39 @@ type LogRequestStruct struct {
 	StartDate string   `json:"startDate"`
 	EndDate   string   `json:"endDate"`
 	LogType   []string `json:"logType"`
+}
+
+func deleteFiles(c *gin.Context) {
+	var request DeleteFilesRequestST
+	if err := c.Bind(&request); err != nil {
+		log.Error(fmt.Errorf("request %v", err))
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if len(request.Paths) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "paths is required"})
+		return
+	}
+
+	result, err := DeleteFilesByList(request.Paths)
+	if err != nil {
+		log.Error(err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	response := new(ResponseST)
+	response.Code = http.StatusOK
+	response.Message = "Delete Files Success"
+	response.Data = map[string]interface{}{
+		"requested": result.Requested,
+		"deleted":   result.Deleted,
+		"excluded":  result.Excluded,
+	}
+	response.Success = true
+
+	c.JSON(http.StatusOK, response)
 }
 
 // Monitoring Log Download API

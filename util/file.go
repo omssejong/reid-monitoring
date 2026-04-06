@@ -1,11 +1,26 @@
 package util
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"time"
 )
+
+const (
+	maxConcurrentDeleteCount = 100
+	deleteBatchInterval      = time.Second
+	allowedDeleteBasePath    = "/opt/oms/omeye/filestorage"
+)
+
+type DeleteFilesResult struct {
+	Requested int
+	Deleted   int
+	Excluded  int
+}
 
 /**
  * DeleteFilesAnHours
@@ -52,6 +67,98 @@ func DeleteFilesAnHours(path string, retention time.Duration) error {
 
 	return nil
 
+}
+
+func DeleteFilesByList(paths []string) (DeleteFilesResult, error) {
+	targets, excluded := normalizeDeleteTargets(paths)
+	result := DeleteFilesResult{
+		Requested: len(paths),
+		Deleted:   len(targets),
+		Excluded:  len(excluded),
+	}
+	if len(targets) == 0 {
+		return result, nil
+	}
+
+	var deleteErrs []error
+	for start := 0; start < len(targets); start += maxConcurrentDeleteCount {
+		end := start + maxConcurrentDeleteCount
+		if end > len(targets) {
+			end = len(targets)
+		}
+
+		if err := deleteFileBatch(targets[start:end]); err != nil {
+			deleteErrs = append(deleteErrs, err)
+		}
+
+		if end < len(targets) {
+			time.Sleep(deleteBatchInterval)
+		}
+	}
+
+	return result, errors.Join(deleteErrs...)
+}
+
+func deleteFileBatch(paths []string) error {
+	var wg sync.WaitGroup
+	errCh := make(chan error, len(paths))
+
+	for _, path := range paths {
+		wg.Add(1)
+		go func(target string) {
+			defer wg.Done()
+			log.Info("delete file: " + target)
+			if err := os.Remove(target); err != nil {
+				errCh <- fmt.Errorf("delete %s: %w", target, err)
+			}
+		}(path)
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	var errs []error
+	for err := range errCh {
+		errs = append(errs, err)
+	}
+
+	return errors.Join(errs...)
+}
+
+func normalizeDeleteTargets(paths []string) ([]string, []string) {
+	targets := make([]string, 0, len(paths))
+	excluded := make([]string, 0)
+	seen := make(map[string]struct{}, len(paths))
+
+	for _, path := range paths {
+		trimmed := strings.TrimSpace(path)
+		if trimmed == "" {
+			continue
+		}
+		cleaned := filepath.Clean(trimmed)
+		if !isAllowedDeletePath(cleaned) {
+			log.Warn("excluded delete path: " + cleaned)
+			excluded = append(excluded, cleaned)
+			continue
+		}
+		if _, ok := seen[cleaned]; ok {
+			continue
+		}
+		seen[cleaned] = struct{}{}
+		targets = append(targets, cleaned)
+	}
+
+	return targets, excluded
+}
+
+func isAllowedDeletePath(target string) bool {
+	base := filepath.Clean(allowedDeleteBasePath)
+	if target == base {
+		return true
+	}
+
+	prefix := base + string(os.PathSeparator)
+	return strings.HasPrefix(target, prefix)
 }
 
 /**
