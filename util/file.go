@@ -19,7 +19,10 @@ import (
  * @version: 1.0.0
  * @since: 2024.06.21
  */
-func DeleteFilesAnHours(path string) error {
+func DeleteFilesAnHours(path string, retention time.Duration) error {
+	if retention <= 0 {
+		retention = time.Hour
+	}
 
 	// data 폴더 내 파일 목록을 가져온다
 	files, err := os.ReadDir(path)
@@ -37,7 +40,7 @@ func DeleteFilesAnHours(path string) error {
 				return fmt.Errorf("get file info : %s", err.Error())
 			}
 
-			if time.Since(f.ModTime()) > time.Hour {
+			if time.Since(f.ModTime()) > retention {
 				log.Info("delete file: " + file.Name())
 				if err := os.Remove(filepath.Join(path, file.Name())); err != nil {
 					return err

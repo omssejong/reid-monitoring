@@ -14,6 +14,11 @@ import (
 
 func main() {
 	checkDirectories()
+	appCtx, cancelAppCtx := context.WithCancel(context.Background())
+	defer cancelAppCtx()
+
+	go util.StartDataCleanup(appCtx, "data")
+
 	// Start monitoring server
 	srv := util.WebApp()
 	go func() {
@@ -34,6 +39,7 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	log.Println("Shutdown Server ...")
+	cancelAppCtx()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

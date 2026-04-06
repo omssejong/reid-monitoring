@@ -85,6 +85,8 @@ func newConfigFromDotEnv(raw []byte) (Config, error) {
 	if err != nil {
 		return config, err
 	}
+	zipRetentionHours := getOptionalIntEnv(values, 1, "ZIP_RETENTION_HOURS", "SC_SETTING_ZIP_RETENTION_HOURS")
+	zipCleanupIntervalMinutes := getOptionalIntEnv(values, 10, "ZIP_CLEANUP_INTERVAL_MINUTES", "SC_SETTING_ZIP_CLEANUP_INTERVAL_MINUTES")
 
 	config.SC = SettingConfig{
 		Setting: SettingSection{
@@ -101,6 +103,8 @@ func newConfigFromDotEnv(raw []byte) (Config, error) {
 			MiddleServiceName:          getStringEnv(values, "MIDDLE_SERVICE_NAME", "SC_SETTING_MIDDLE_SERVICE_NAME"),
 			Token:                      getStringEnv(values, "TOKEN", "SC_SETTING_TOKEN"),
 			ServerType:                 getStringEnv(values, "SERVER_TYPE", "SC_SETTING_SERVER_TYPE"),
+			ZipRetentionHours:          zipRetentionHours,
+			ZipCleanupIntervalMinutes:  zipCleanupIntervalMinutes,
 		},
 		Version: VersionSection{
 			Frontend:        getStringEnv(values, "VERSION_FRONTEND", "SC_VERSION_FRONTEND"),
@@ -165,6 +169,24 @@ func getIntEnv(values map[string]string, keys ...string) (int, error) {
 	return val, nil
 }
 
+func getOptionalIntEnv(values map[string]string, defaultValue int, keys ...string) int {
+	for _, key := range keys {
+		if raw, ok := values[key]; ok && strings.TrimSpace(raw) != "" {
+			if val, err := strconv.Atoi(strings.TrimSpace(raw)); err == nil {
+				return val
+			}
+			return defaultValue
+		}
+		if env := os.Getenv(key); strings.TrimSpace(env) != "" {
+			if val, err := strconv.Atoi(strings.TrimSpace(env)); err == nil {
+				return val
+			}
+			return defaultValue
+		}
+	}
+	return defaultValue
+}
+
 func parseDotEnv(raw string) (map[string]string, error) {
 	values := make(map[string]string)
 	for i, line := range strings.Split(raw, "\n") {
@@ -215,6 +237,8 @@ type SettingSection struct {
 	MiddleServiceName          string `yaml:"middleServiceName"`
 	Token                      string `yaml:"token"`
 	ServerType                 string `yaml:"serverType"`
+	ZipRetentionHours          int    `yaml:"zipRetentionHours"`
+	ZipCleanupIntervalMinutes  int    `yaml:"zipCleanupIntervalMinutes"`
 }
 
 type VersionSection struct {
