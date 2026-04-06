@@ -100,6 +100,7 @@ func newConfigFromDotEnv(raw []byte) (Config, error) {
 			AiServiceName:              getStringEnv(values, "AI_SERVICE_NAME", "SC_SETTING_AI_SERVICE_NAME"),
 			MiddleServiceName:          getStringEnv(values, "MIDDLE_SERVICE_NAME", "SC_SETTING_MIDDLE_SERVICE_NAME"),
 			Token:                      getStringEnv(values, "TOKEN", "SC_SETTING_TOKEN"),
+			ServerType:                 getStringEnv(values, "SERVER_TYPE", "SC_SETTING_SERVER_TYPE"),
 		},
 		Version: VersionSection{
 			Frontend:        getStringEnv(values, "VERSION_FRONTEND", "SC_VERSION_FRONTEND"),
@@ -213,6 +214,7 @@ type SettingSection struct {
 	AiServiceName              string `yaml:"aiServiceName"`
 	MiddleServiceName          string `yaml:"middleServiceName"`
 	Token                      string `yaml:"token"`
+	ServerType                 string `yaml:"serverType"`
 }
 
 type VersionSection struct {

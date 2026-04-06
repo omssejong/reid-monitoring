@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -115,7 +116,7 @@ func appRouter(r *gin.Engine) {
 		reidV1.GET("/info", SseMiddleware(), sseInfo)
 		reidV1.GET("/get-info", httpInfo) // main server 에서 analyze server 정보 가져오는 api
 		reidV1.POST("/reboot", restartServer)
-		reidV1.POST("/servicectrl", restartService)
+		reidV1.POST("/servicectrl", serviceControl)
 		reidV1.POST("/log/download", downloadLog)
 		reidV1.POST("/upload/patch", patchService)
 	}
@@ -322,6 +323,7 @@ type ServiceRestartStruct struct {
 }
 
 // Service Restart API
+/*
 func restartService(c *gin.Context) {
 
 	// Request Data 바인딩
@@ -360,6 +362,75 @@ func restartService(c *gin.Context) {
 	response := new(ResponseListST)
 	response.Code = http.StatusOK
 	response.Message = "Service Restart Success"
+	response.Data = []string{"success"}
+	response.Success = true
+
+	c.JSON(http.StatusOK, response)
+}
+*/
+
+func serviceControl(c *gin.Context) {
+	var request ServiceRestartStruct
+	if err := c.Bind(&request); err != nil {
+		log.Error(fmt.Errorf("request %v", err))
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	command := strings.TrimSpace(strings.ToLower(request.Command))
+	if command == "" {
+		command = "restart"
+	}
+
+	actionMessage := map[string]string{
+		"start":   "Service Start Success",
+		"stop":    "Service Stop Success",
+		"restart": "Service Restart Success",
+	}
+
+	log.Info(fmt.Sprintf("Request Target: %v, Command: %s", request.ServiceType, command))
+	for _, targetType := range request.ServiceType {
+		targets, err := ResolveServiceTargets(targetType)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		for _, target := range targets {
+			if target == "middleserver" {
+				if command != "restart" {
+					c.JSON(http.StatusBadRequest, gin.H{"error": "middleserver target only supports restart command"})
+					return
+				}
+				if err := MiddleserverRestart(); err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+					return
+				}
+				continue
+			}
+
+			switch command {
+			case "start":
+				err = StartService(target)
+			case "stop":
+				err = StopService(target)
+			case "restart":
+				err = RestartService(target)
+			default:
+				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("unsupported command: %s", command)})
+				return
+			}
+
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+		}
+	}
+
+	response := new(ResponseListST)
+	response.Code = http.StatusOK
+	response.Message = actionMessage[command]
 	response.Data = []string{"success"}
 	response.Success = true
 

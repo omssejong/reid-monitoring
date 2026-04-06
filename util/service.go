@@ -7,6 +7,37 @@ import (
 	"strings"
 )
 
+func ResolveServiceTargets(targetType string) ([]string, error) {
+	target := strings.TrimSpace(strings.ToLower(targetType))
+
+	switch target {
+	case "back":
+		return splitServiceNames(configs.SC.Setting.BackendServiceName), nil
+	case "main":
+		return splitServiceNames(configs.SC.Setting.AiServiceName), nil
+	case "mediaserver":
+		return splitServiceNames(configs.SC.Setting.MediaStreamingServiceName), nil
+	case "middleserver":
+		return []string{"middleserver"}, nil
+	case "":
+		return nil, fmt.Errorf("service target is empty")
+	default:
+		return splitServiceNames(targetType), nil
+	}
+}
+
+func splitServiceNames(serviceNames string) []string {
+	names := make([]string, 0)
+	for _, serviceName := range strings.Split(serviceNames, ",") {
+		serviceName = strings.TrimSpace(serviceName)
+		if serviceName == "" {
+			continue
+		}
+		names = append(names, serviceName)
+	}
+	return names
+}
+
 /**
  * GetServiceStatus
  * 서비스 상태 정보 조회
@@ -107,16 +138,7 @@ func RestartService(serviceName string) error {
 	if strings.Contains(serviceName, "docker") {
 		command = fmt.Sprintf("echo %s | sudo -S docker compose -f %s restart", password, fmt.Sprintf("%s/backend/docker-compose.yml", configs.SC.Setting.RootPath))
 	} else {
-		switch serviceName {
-		case configs.SC.Setting.BackendServiceName:
-			split := strings.Split(serviceName, ",")
-			command = fmt.Sprintf("echo %s | sudo -S systemctl restart %s %s", password, split[0], split[1])
-		case configs.SC.Setting.AiServiceName:
-			split := strings.Split(serviceName, ",")
-			command = fmt.Sprintf("echo %s | sudo -S systemctl restart %s %s %s", password, split[0], split[1], split[2])
-		case configs.SC.Setting.MediaStreamingServiceName:
-			command = fmt.Sprintf("echo %s | sudo -S systemctl restart %s", password, serviceName)
-		}
+		command = fmt.Sprintf("echo %s | sudo -S systemctl restart %s", password, serviceName)
 	}
 	cmd := exec.Command("bash", "-c", command)
 	log.Info(fmt.Sprintf("Restarting Service: %s", command))
@@ -147,6 +169,7 @@ func StopService(serviceName string) error {
 		command = fmt.Sprintf("echo %s | sudo -S systemctl stop %s", password, serviceName)
 	}
 	cmd := exec.Command("bash", "-c", command)
+	log.Info(fmt.Sprintf("Stopping Service: %s", command))
 	err := cmd.Run()
 	if err != nil {
 		log.Error(fmt.Errorf("stopping %s: %v", serviceName, err))
@@ -174,6 +197,7 @@ func StartService(serviceName string) error {
 		command = fmt.Sprintf("echo %s | sudo -S systemctl start %s", password, serviceName)
 	}
 	cmd := exec.Command("bash", "-c", command)
+	log.Info(fmt.Sprintf("Starting Service: %s", command))
 	err := cmd.Run()
 	if err != nil {
 		log.Error(fmt.Errorf("starting %s: %v", serviceName, err))
