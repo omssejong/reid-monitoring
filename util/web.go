@@ -102,17 +102,6 @@ func WebApp() *http.Server {
 func appRouter(r *gin.Engine) {
 
 	// API 라우터 설정
-	//apiV1 := r.Group("/api/v1")
-	//{
-	//	apiV1.GET("/monitoring/server/info", serverInfo)
-	//	apiV1.POST("/monitoring/server/restart", restartServer)
-	//	apiV1.POST("/monitoring/server/stop", shutdownServer)
-	//	apiV1.POST("/monitoring/service/start", startService)
-	//	apiV1.POST("/monitoring/service/stop", stopService)
-	//	apiV1.POST("/monitoring/service/restart", restartService)
-	//	apiV1.POST("/monitoring/log/download", downloadLog)
-	//}
-
 	// 고속검색 전용 라우터. 추후 통합 및 삭제 필요
 	reidV1 := r.Group("/monitoring/mgmt")
 	{
@@ -490,7 +479,6 @@ func downloadLog(c *gin.Context) {
 	var request LogRequestStruct
 	if err := c.Bind(&request); err != nil {
 		log.Error(fmt.Errorf("request %v", err))
-		//c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		c.JSON(http.StatusBadRequest, PatchResponseST{
 			Code:       400,
 			Success:    false,
@@ -504,7 +492,7 @@ func downloadLog(c *gin.Context) {
 
 	files, err := FilterLogFilesByDate(request.StartDate, request.EndDate)
 	if err != nil {
-		//c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		log.Error(err)
 		c.JSON(http.StatusInternalServerError, PatchResponseST{
 			Code:       500,
 			Success:    false,
@@ -518,7 +506,7 @@ func downloadLog(c *gin.Context) {
 
 	compressPath, err := EncryptCompress(files)
 	if err != nil {
-		//c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		log.Error(err)
 		c.JSON(http.StatusInternalServerError, PatchResponseST{
 			Code:       500,
 			Success:    false,
@@ -529,15 +517,6 @@ func downloadLog(c *gin.Context) {
 		})
 		return
 	}
-
-	// 응답 데이터 설정
-	// response := new(ResponseST)
-	// response.Code = http.StatusOK
-	// response.Message = "Log Download Success"
-	// response.Data = map[string]interface{}{
-	// 	"path": filepath.Join(monitoringPath, compressPath),
-	// }
-	// c.JSON(response.Code, response)
 
 	fileStat, _ := os.Stat(compressPath)
 

@@ -188,7 +188,7 @@ func FilterLogFilesByDate(start, end string) ([]string, error) {
 	}
 	parseEndTime = parseEndTime.Add(86399 * time.Second)
 	var files []string
-	files = append(files, "/var/log/syslog")
+	//files = append(files, "/var/log/syslog") // syslog 가져오는 것이 필요할 경우 사용하기
 
 	targetFiles, err := searchFiles(logPath, ".log")
 	if err != nil {
