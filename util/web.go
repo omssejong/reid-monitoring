@@ -3,6 +3,8 @@ package util
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,7 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/gin-gonic/gin"
+	"github.com/go-chi/chi/v5"
+	chimiddleware "github.com/go-chi/chi/v5/middleware"
 )
 
 /**
@@ -70,56 +73,43 @@ type DeleteFilesRequestST struct {
  * @since: 2024.01.12
  */
 func WebApp() *http.Server {
-	gin.SetMode(gin.ReleaseMode)
-
-	// Gin Framework 초기화
-	r := gin.Default()
-
-	// Logger 설정
-	r.Use(gin.Logger())
-
-	// Recovery Middleware 설정
-	r.Use(gin.Recovery())
-
-	// Security Middleware 설정
+	r := chi.NewRouter()
+	r.Use(chimiddleware.Recoverer)
+	r.Use(LoggerMiddleware(log))
 	r.Use(SecureMiddleware())
-
-	// CORS 설정
 	r.Use(CORSMiddleware())
 
-	// Router 설정
 	appRouter(r)
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", configs.SC.Setting.ServerPort),
-		Handler: r.Handler(),
+		Handler: r,
 	}
 
 	return srv
 }
 
 // Router 설정 함수
-func appRouter(r *gin.Engine) {
+func appRouter(r chi.Router) {
 
 	// API 라우터 설정
 	// 고속검색 전용 라우터. 추후 통합 및 삭제 필요
-	reidV1 := r.Group("/monitoring/mgmt")
-	{
-		reidV1.GET("/server-info", reidServerInfo)
-		reidV1.GET("/info", SseMiddleware(), sseInfo)
-		reidV1.GET("/get-info", httpInfo) // main server 에서 analyze server 정보 가져오는 api
-		reidV1.POST("/reboot", restartServer)
-		reidV1.POST("/servicectrl", serviceControl)
-		reidV1.POST("/shutdown", shutdownServer)
-		reidV1.POST("/log/download", downloadLog)
-		reidV1.POST("/delete/files", deleteFiles)
-		reidV1.POST("/upload/patch", patchService)
-	}
+	r.Route("/monitoring/mgmt", func(reidV1 chi.Router) {
+		reidV1.Get("/server-info", reidServerInfo)
+		reidV1.With(SseMiddleware()).Get("/info", sseInfo)
+		reidV1.Get("/get-info", httpInfo)
+		reidV1.Post("/reboot", restartServer)
+		reidV1.Post("/servicectrl", serviceControl)
+		reidV1.Post("/shutdown", shutdownServer)
+		reidV1.Post("/log/download", downloadLog)
+		reidV1.Post("/delete/files", deleteFiles)
+		reidV1.Post("/upload/patch", patchService)
+	})
 	log.Info("version 1.0.0.260407")
 }
 
 // Server Information API
-func reidServerInfo(c *gin.Context) {
+func reidServerInfo(w http.ResponseWriter, r *http.Request) {
 
 	//infoDict := make(map[string]interface{})
 	serverInfoDict := make(map[string]interface{})
@@ -127,26 +117,25 @@ func reidServerInfo(c *gin.Context) {
 	// 서버 CPU 정보 가져오기
 	cpuName, cpuThreads, err := GetCPUModelNameAndPhysicalThreadCount()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		writeErrorJSON(w, http.StatusInternalServerError, err)
 		return
 	}
 
 	//cpuCores, err := GetCPUCores()
 	//if err != nil {
-	//	c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 	//	return
 	//}
 
 	// 서버 GPU 정보 가져오기
 	gpuInfo, err := ReidGetGPUInfo()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		writeErrorJSON(w, http.StatusInternalServerError, err)
 		return
 	}
 
 	cpuSockets, err := GetCPUSocket(cpuThreads)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		writeErrorJSON(w, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -155,14 +144,14 @@ func reidServerInfo(c *gin.Context) {
 	// 서버 메모리 정보 가져오기
 	memSize, err := GetTotalMemorySize()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		writeErrorJSON(w, http.StatusInternalServerError, err)
 		return
 	}
 
 	// 서버 디스크 정보 가져오기
 	diskInfo, err := GetDiskInfo()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		writeErrorJSON(w, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -190,7 +179,7 @@ func reidServerInfo(c *gin.Context) {
 	// 서버 네트워크 정보 가져오기
 	networkInfo, err := GetNetworkInfo(networkName)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		writeErrorJSON(w, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -220,60 +209,75 @@ func reidServerInfo(c *gin.Context) {
 	//log.Info(fmt.Sprintf("Server Information: %v", infoDict))
 	log.Info(fmt.Sprintf("Server Information: %v", serverInfoDict))
 
-	c.JSON(http.StatusOK, response)
+	writeJSON(w, http.StatusOK, response)
 }
 
-func sseInfo(c *gin.Context) {
-	ctx, cancelCtx := context.WithCancel(context.Background())
-	defer cancelCtx()
+func sseInfo(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeErrorJSON(w, http.StatusInternalServerError, errors.New("streaming unsupported"))
+		return
+	}
+
 	systemInfo := make(chan map[string]any)
-	go GetSystemInfo(ctx, systemInfo)
-	//c.Writer.Flush()
-	c.Stream(func(w io.Writer) bool {
+	go GetSystemInfo(r.Context(), systemInfo)
+
+	for {
 		select {
+		case <-r.Context().Done():
+			return
 		case info := <-systemInfo:
 			if v, ok := info["error"]; ok {
-				c.JSON(500, gin.H{"error": v.(error).Error()})
-				return false
+				writeErrorJSON(w, http.StatusInternalServerError, v.(error))
+				return
 			}
-			c.SSEvent("message", info)
-			return true
+			payload, err := json.Marshal(info)
+			if err != nil {
+				writeErrorJSON(w, http.StatusInternalServerError, err)
+				return
+			}
+			if _, err := io.WriteString(w, "event: message\n"); err != nil {
+				return
+			}
+			if _, err := fmt.Fprintf(w, "data: %s\n\n", payload); err != nil {
+				return
+			}
+			flusher.Flush()
 		}
-	})
+	}
 }
 
-func httpInfo(c *gin.Context) {
-	ctx, cancelCtx := context.WithCancel(context.Background())
-	defer cancelCtx()
+func httpInfo(w http.ResponseWriter, r *http.Request) {
 	systemInfo := make(chan map[string]any)
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
 	go GetSystemInfo(ctx, systemInfo)
-	//c.Writer.Flush()
-	c.Stream(func(w io.Writer) bool {
-		select {
-		case info := <-systemInfo:
-			if v, ok := info["error"]; ok {
-				c.JSON(500, gin.H{"error": v.(error).Error()})
-				return false
-			}
-			c.JSON(200, info)
-			return true
+
+	select {
+	case <-r.Context().Done():
+		return
+	case info := <-systemInfo:
+		if v, ok := info["error"]; ok {
+			writeErrorJSON(w, http.StatusInternalServerError, v.(error))
+			return
 		}
-	})
+		writeJSON(w, http.StatusOK, info)
+	}
 }
 
 // Server Stop API
-func shutdownServer(c *gin.Context) {
+func shutdownServer(w http.ResponseWriter, r *http.Request) {
 	// Request Data 바인딩
 	var request RequestST
-	if err := c.Bind(&request); err != nil {
+	if err := decodeJSONBody(r, &request); err != nil {
 		log.Error(fmt.Errorf("request %v", err))
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		writeErrorJSON(w, http.StatusBadRequest, err)
 		return
 	}
 
 	// 서버 종료
 	if err := ShutdownServer(); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		writeErrorJSON(w, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -283,23 +287,15 @@ func shutdownServer(c *gin.Context) {
 	response.Message = "Server Shutdown Success"
 	response.Data = nil
 
-	c.JSON(http.StatusOK, response)
+	writeJSON(w, http.StatusOK, response)
 }
 
 // Server Restart API
-func restartServer(c *gin.Context) {
-
-	// Request Data 바인딩
-	//var request RequestST
-	//if err := c.Bind(&request); err != nil {
-	//	log.Error(fmt.Errorf("request %v", err))
-	//	c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-	//	return
-	//}
+func restartServer(w http.ResponseWriter, r *http.Request) {
 
 	// 서버 재시작
 	if err := RestartServer(); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		writeErrorJSON(w, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -310,7 +306,7 @@ func restartServer(c *gin.Context) {
 	response.Data = nil
 	response.Success = true
 
-	c.JSON(http.StatusOK, response)
+	writeJSON(w, http.StatusOK, response)
 }
 
 type ServiceRestartStruct struct {
@@ -318,58 +314,11 @@ type ServiceRestartStruct struct {
 	ServiceType []string `json:"serviceType"`
 }
 
-// Service Restart API
-/*
-func restartService(c *gin.Context) {
-
-	// Request Data 바인딩
+func serviceControl(w http.ResponseWriter, r *http.Request) {
 	var request ServiceRestartStruct
-	if err := c.Bind(&request); err != nil {
+	if err := decodeJSONBody(r, &request); err != nil {
 		log.Error(fmt.Errorf("request %v", err))
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// 서비스 재시작
-	var target string
-	log.Info(fmt.Sprintf("Request Target: %v", request.ServiceType))
-	for _, target = range request.ServiceType {
-		switch target {
-		case "back":
-			target = configs.SC.Setting.BackendServiceName
-		case "mediaserver":
-			target = configs.SC.Setting.MediaStreamingServiceName
-		case "main":
-			target = configs.SC.Setting.AiServiceName
-		case "middleserver":
-			if err := MiddleserverRestart(); err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-				return
-			}
-		}
-
-		if err := RestartService(target); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-	}
-
-	// 응답 데이터 설정
-	response := new(ResponseListST)
-	response.Code = http.StatusOK
-	response.Message = "Service Restart Success"
-	response.Data = []string{"success"}
-	response.Success = true
-
-	c.JSON(http.StatusOK, response)
-}
-*/
-
-func serviceControl(c *gin.Context) {
-	var request ServiceRestartStruct
-	if err := c.Bind(&request); err != nil {
-		log.Error(fmt.Errorf("request %v", err))
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		writeErrorJSON(w, http.StatusBadRequest, err)
 		return
 	}
 
@@ -388,18 +337,18 @@ func serviceControl(c *gin.Context) {
 	for _, targetType := range request.ServiceType {
 		targets, err := ResolveServiceTargets(targetType)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			writeErrorJSON(w, http.StatusBadRequest, err)
 			return
 		}
 
 		for _, target := range targets {
 			if target == "middleserver" {
 				if command != "restart" {
-					c.JSON(http.StatusBadRequest, gin.H{"error": "middleserver target only supports restart command"})
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "middleserver target only supports restart command"})
 					return
 				}
 				if err := MiddleserverRestart(); err != nil {
-					c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+					writeErrorJSON(w, http.StatusInternalServerError, err)
 					return
 				}
 				continue
@@ -413,12 +362,12 @@ func serviceControl(c *gin.Context) {
 			case "restart":
 				err = RestartService(target)
 			default:
-				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("unsupported command: %s", command)})
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("unsupported command: %s", command)})
 				return
 			}
 
 			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				writeErrorJSON(w, http.StatusInternalServerError, err)
 				return
 			}
 		}
@@ -430,7 +379,7 @@ func serviceControl(c *gin.Context) {
 	response.Data = []string{"success"}
 	response.Success = true
 
-	c.JSON(http.StatusOK, response)
+	writeJSON(w, http.StatusOK, response)
 }
 
 type LogRequestStruct struct {
@@ -439,23 +388,23 @@ type LogRequestStruct struct {
 	LogType   []string `json:"logType"`
 }
 
-func deleteFiles(c *gin.Context) {
+func deleteFiles(w http.ResponseWriter, r *http.Request) {
 	var request DeleteFilesRequestST
-	if err := c.Bind(&request); err != nil {
+	if err := decodeJSONBody(r, &request); err != nil {
 		log.Error(fmt.Errorf("request %v", err))
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		writeErrorJSON(w, http.StatusBadRequest, err)
 		return
 	}
 
 	if len(request.Paths) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "paths is required"})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "paths is required"})
 		return
 	}
 
 	result, err := DeleteFilesByList(request.Paths)
 	if err != nil {
 		log.Error(err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		writeErrorJSON(w, http.StatusInternalServerError, err)
 		return
 	}
 
@@ -469,17 +418,17 @@ func deleteFiles(c *gin.Context) {
 	}
 	response.Success = true
 
-	c.JSON(http.StatusOK, response)
+	writeJSON(w, http.StatusOK, response)
 }
 
 // Monitoring Log Download API
-func downloadLog(c *gin.Context) {
+func downloadLog(w http.ResponseWriter, r *http.Request) {
 
 	// Request Data 바인딩
 	var request LogRequestStruct
-	if err := c.Bind(&request); err != nil {
+	if err := decodeJSONBody(r, &request); err != nil {
 		log.Error(fmt.Errorf("request %v", err))
-		c.JSON(http.StatusBadRequest, PatchResponseST{
+		writeJSON(w, http.StatusBadRequest, PatchResponseST{
 			Code:       400,
 			Success:    false,
 			Message:    "요청 데이터가 잘못되었습니다",
@@ -493,7 +442,7 @@ func downloadLog(c *gin.Context) {
 	files, err := FilterLogFilesByDate(request.StartDate, request.EndDate)
 	if err != nil {
 		log.Error(err)
-		c.JSON(http.StatusInternalServerError, PatchResponseST{
+		writeJSON(w, http.StatusInternalServerError, PatchResponseST{
 			Code:       500,
 			Success:    false,
 			Message:    "기간설정이 잘못되었습니다",
@@ -507,7 +456,7 @@ func downloadLog(c *gin.Context) {
 	compressPath, err := EncryptCompress(files)
 	if err != nil {
 		log.Error(err)
-		c.JSON(http.StatusInternalServerError, PatchResponseST{
+		writeJSON(w, http.StatusInternalServerError, PatchResponseST{
 			Code:       500,
 			Success:    false,
 			Message:    "압축파일 생성에 실패하였습니다",
@@ -520,11 +469,11 @@ func downloadLog(c *gin.Context) {
 
 	fileStat, _ := os.Stat(compressPath)
 
-	c.Header("Content-Type", "application/octet-stream")
-	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filepath.Base(compressPath)))
-	c.Header("Content-Length", fmt.Sprintf("%d", fileStat.Size()))
-	log.Info(fmt.Sprintf("Compress Path: %s, Header: %v", compressPath, c.Writer.Header().Values("Content-Type")))
-	c.File(compressPath)
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filepath.Base(compressPath)))
+	w.Header().Set("Content-Length", fmt.Sprintf("%d", fileStat.Size()))
+	log.Info(fmt.Sprintf("Compress Path: %s, Header: %v", compressPath, w.Header().Values("Content-Type")))
+	http.ServeFile(w, r, compressPath)
 }
 
 type PatchResponseST struct {
@@ -542,66 +491,62 @@ type PatchRequestST struct {
 }
 
 // file upload = formdata
-func patchService(c *gin.Context) {
+func patchService(w http.ResponseWriter, r *http.Request) {
 	log.Info("start reid patch")
-	encryptedFile, err := c.FormFile("file")
-	if err != nil {
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		log.Error(err)
-		response := PatchResponseST{
+		writeJSON(w, http.StatusBadRequest, PatchResponseST{
 			Code:       400,
 			Message:    "파일이 존재하지 않습니다.",
 			Success:    false,
 			ErrorCode:  "",
 			ErrorTitle: "NotFoundFile",
 			ExtraData:  nil,
-		}
-		c.JSON(400, response)
+		})
 		return
 	}
 
-	tmpFile, err := encryptedFile.Open()
+	encryptedFile, _, err := r.FormFile("file")
 	if err != nil {
 		log.Error(err)
-		response := PatchResponseST{
+		writeJSON(w, http.StatusBadRequest, PatchResponseST{
 			Code:       400,
-			Message:    "패치 파일 로드에 실패하였습니다",
+			Message:    "파일이 존재하지 않습니다.",
 			Success:    false,
 			ErrorCode:  "",
-			ErrorTitle: "FileLoadError",
+			ErrorTitle: "NotFoundFile",
 			ExtraData:  nil,
-		}
-		c.JSON(400, response)
+		})
 		return
 	}
+	defer encryptedFile.Close()
 
-	receiveHash, isExist := c.GetPostForm("hash")
-	if !isExist {
-		response := PatchResponseST{
+	receiveHash := r.FormValue("hash")
+	if receiveHash == "" {
+		writeJSON(w, http.StatusBadRequest, PatchResponseST{
 			Code:       400,
 			Message:    "해쉬 값이 존재하지 않습니다.",
 			Success:    false,
 			ErrorCode:  "",
 			ErrorTitle: "NotFoundHash",
 			ExtraData:  nil,
-		}
-		c.JSON(400, response)
+		})
 		return
 	}
 	log.Info(fmt.Sprintf("receive hash: %s", receiveHash))
 
 	patchFileBuffer := bytes.Buffer{}
-	patchFileSize, err := patchFileBuffer.ReadFrom(tmpFile)
+	patchFileSize, err := patchFileBuffer.ReadFrom(encryptedFile)
 	if err != nil {
 		log.Error(err)
-		response := PatchResponseST{
+		writeJSON(w, http.StatusBadRequest, PatchResponseST{
 			Code:       400,
 			Message:    "해쉬 값이 존재하지 않습니다.",
 			Success:    false,
 			ErrorCode:  "",
 			ErrorTitle: "NotFoundHash",
 			ExtraData:  nil,
-		}
-		c.JSON(400, response)
+		})
 		return
 	}
 
@@ -611,45 +556,42 @@ func patchService(c *gin.Context) {
 	err = checkSha256Sum(copyData, receiveHash)
 	if err != nil {
 		log.Error(err)
-		response := PatchResponseST{
+		writeJSON(w, http.StatusBadRequest, PatchResponseST{
 			Code:       400,
 			Message:    "해쉬 값이 일치하지 않습니다.",
 			Success:    false,
 			ErrorCode:  "",
 			ErrorTitle: "NotMatchHash",
 			ExtraData:  nil,
-		}
-		c.JSON(400, response)
+		})
 		return
 	}
 	log.Info(fmt.Sprintf("patch file size: %dbyte", patchFileSize))
 	decryptedZipFile, err := decryptZipFile(encryptedZipFile)
 	if err != nil {
 		log.Error(err)
-		response := PatchResponseST{
+		writeJSON(w, http.StatusBadRequest, PatchResponseST{
 			Code:       400,
 			Message:    "압축파일 추출에 실패하였습니다.",
 			Success:    false,
 			ErrorCode:  "",
 			ErrorTitle: "FailExtractedZipFile",
 			ExtraData:  nil,
-		}
-		c.JSON(400, response)
+		})
 		return
 	}
 
 	mkdirErr := os.Mkdir("temp", 0755)
 	if mkdirErr != nil {
 		log.Error(mkdirErr)
-		response := PatchResponseST{
+		writeJSON(w, http.StatusInternalServerError, PatchResponseST{
 			Code:       500,
 			Message:    "서버에러입니다.",
 			Success:    false,
 			ErrorCode:  "",
 			ErrorTitle: "serverError",
 			ExtraData:  nil,
-		}
-		c.JSON(500, response)
+		})
 		return
 	}
 
@@ -660,42 +602,39 @@ func patchService(c *gin.Context) {
 	saveZipFileErr := os.WriteFile("temp/patch.zip", decryptedZipFile, 0755)
 	if saveZipFileErr != nil {
 		log.Error(saveZipFileErr)
-		response := PatchResponseST{
+		writeJSON(w, http.StatusInternalServerError, PatchResponseST{
 			Code:       500,
 			Message:    "서버에러입니다.",
 			Success:    false,
 			ErrorCode:  "",
 			ErrorTitle: "serverError",
 			ExtraData:  nil,
-		}
-		c.JSON(500, response)
+		})
 		return
 	}
 	unzipErr := unzipPatchFile()
 	if unzipErr != nil {
-		response := PatchResponseST{
+		writeJSON(w, http.StatusBadRequest, PatchResponseST{
 			Code:       400,
 			Message:    "압축 해제에 실패하였습니다.",
 			Success:    false,
 			ErrorCode:  "",
 			ErrorTitle: "FailUnzipProcess",
 			ExtraData:  nil,
-		}
-		c.JSON(400, response)
+		})
 		return
 	}
 
 	patchErr := executePatch()
 	if patchErr != nil {
-		response := PatchResponseST{
+		writeJSON(w, http.StatusBadRequest, PatchResponseST{
 			Code:       400,
 			Message:    "패치를 실패하였습니다.",
 			Success:    false,
 			ErrorCode:  "",
 			ErrorTitle: "FailPatchProcess",
 			ExtraData:  nil,
-		}
-		c.JSON(400, response)
+		})
 		return
 	}
 
@@ -707,5 +646,33 @@ func patchService(c *gin.Context) {
 		ErrorTitle: "PatchSuccess",
 		ExtraData:  nil,
 	}
-	c.JSON(200, response)
+	writeJSON(w, http.StatusOK, response)
+}
+
+func decodeJSONBody(r *http.Request, dest any) error {
+	if r.Body == nil {
+		return nil
+	}
+	defer r.Body.Close()
+
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(dest); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+func writeJSON(w http.ResponseWriter, status int, payload any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(payload); err != nil {
+		log.Error(err)
+	}
+}
+
+func writeErrorJSON(w http.ResponseWriter, status int, err error) {
+	writeJSON(w, status, map[string]string{"error": err.Error()})
 }

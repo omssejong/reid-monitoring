@@ -2,8 +2,6 @@ package util
 
 import (
 	"net/http"
-
-	"github.com/gin-gonic/gin"
 )
 
 /*
@@ -14,26 +12,22 @@ import (
  * @version: 1.0.0
  * @since: 2024.01.12
  */
-func CORSMiddleware() gin.HandlerFunc {
+func CORSMiddleware() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
+			w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")
 
-	return func(c *gin.Context) {
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
 
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")                                                                                                                            // 모든 도메인 허용
-		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")                                                                                                                    // 쿠키 허용
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With") // 헤더 허용
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")                                                                                             // 메소드 허용
-
-		// OPTIONS 요청에 대한 처리
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(http.StatusNoContent) // 상태 코드 204
-			return
-		}
-
-		// 다음 미들웨어 호출
-		c.Next()
-
+			next.ServeHTTP(w, r)
+		})
 	}
-
 }
 
 /*
@@ -44,20 +38,15 @@ func CORSMiddleware() gin.HandlerFunc {
  * @version: 1.0.0
  * @since: 2024.01.12
  */
-func LoggerMiddleware(logger *Log) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		// 요청 전 로그
-		logger.HttpInfoWithFields(c, "Request Start!")
+func LoggerMiddleware(logger *Log) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			logger.HttpInfoWithFields(r, http.StatusOK, 0, "Request Start!")
 
-		// 다음 미들웨어 호출
-		c.Next()
-
-		// 요청 후 로그
-		if c.Err() != nil {
-			logger.HttpErrorWithFields(c, c.Err()) // 에러 로그
-		} else {
-			logger.HttpInfoWithFields(c, "Response End!") // 성공 로그
-		}
+			recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+			next.ServeHTTP(recorder, r)
+			logger.HttpInfoWithFields(r, recorder.status, recorder.size, "Response End!")
+		})
 	}
 }
 
@@ -69,25 +58,43 @@ func LoggerMiddleware(logger *Log) gin.HandlerFunc {
  * @version: 1.0.0
  * @since: 2024.01.12
  */
-func SecureMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		// Security Headers 설정
-		c.Writer.Header().Set("Content-Security-Policy", "default-src 'self'") // CSP 설정
-		c.Writer.Header().Set("X-Content-Type-Options", "nosniff")             // MIME 스니핑 방지
-		c.Writer.Header().Set("X-Frame-Options", "DENY")                       // Clickjacking 방지
-
-		// 다음 미들웨어 호출
-		c.Next()
+func SecureMiddleware() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Security-Policy", "default-src 'self'")
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+			w.Header().Set("X-Frame-Options", "DENY")
+			next.ServeHTTP(w, r)
+		})
 	}
 }
 
 // sse header middleware
-func SseMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Writer.Header().Set("Content-Type", "text/event-stream")
-		c.Writer.Header().Set("Cache-Control", "no-cache")
-		c.Writer.Header().Set("Connection", "keep-alive")
-		c.Writer.Header().Set("Transfer-Encoding", "chunked")
-		c.Next()
+func SseMiddleware() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.Header().Set("Connection", "keep-alive")
+			w.Header().Set("Transfer-Encoding", "chunked")
+			next.ServeHTTP(w, r)
+		})
 	}
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+	size   int
+}
+
+func (r *statusRecorder) WriteHeader(status int) {
+	r.status = status
+	r.ResponseWriter.WriteHeader(status)
+}
+
+func (r *statusRecorder) Write(p []byte) (int, error) {
+	n, err := r.ResponseWriter.Write(p)
+	r.size += n
+	return n, err
 }

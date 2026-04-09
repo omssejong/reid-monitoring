@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
-
-	"github.com/gin-gonic/gin"
 )
 
 func NewLogger(fp, fn string) *Log {
@@ -50,35 +50,49 @@ func (l *Log) Error(err error) {
 	l.logger.Log(context.Background(), slog.LevelError, fmt.Sprintf("[%s:%d] %s", fileName, line, err.Error()))
 }
 
-func (l *Log) HttpInfoWithFields(c *gin.Context, message string) {
+func (l *Log) HttpInfoWithFields(r *http.Request, status, size int, message string) {
 	l.logger.Log(context.Background(), slog.LevelInfo, message,
-		"ip", c.ClientIP(),
-		"host", c.Request.Host,
-		"path", c.Request.URL.Path,
-		"method", c.Request.Method,
-		"status", c.Writer.Status(),
-		"size", c.Writer.Size(),
+		"ip", clientIP(r),
+		"host", r.Host,
+		"path", r.URL.Path,
+		"method", r.Method,
+		"status", status,
+		"size", size,
 	)
 }
 
-func (l *Log) HttpWarnWithFields(c *gin.Context, message string) {
+func (l *Log) HttpWarnWithFields(r *http.Request, status, size int, message string) {
 	l.logger.Log(context.Background(), slog.LevelWarn, message,
-		"ip", c.ClientIP(),
-		"host", c.Request.Host,
-		"path", c.Request.URL.Path,
-		"method", c.Request.Method,
-		"status", c.Writer.Status(),
-		"size", c.Writer.Size(),
+		"ip", clientIP(r),
+		"host", r.Host,
+		"path", r.URL.Path,
+		"method", r.Method,
+		"status", status,
+		"size", size,
 	)
 }
 
-func (l *Log) HttpErrorWithFields(c *gin.Context, err error) {
+func (l *Log) HttpErrorWithFields(r *http.Request, status, size int, err error) {
 	l.logger.Log(context.Background(), slog.LevelError, err.Error(),
-		"ip", c.ClientIP(),
-		"host", c.Request.Host,
-		"path", c.Request.URL.Path,
-		"method", c.Request.Method,
-		"status", c.Writer.Status(),
-		"size", c.Writer.Size(),
+		"ip", clientIP(r),
+		"host", r.Host,
+		"path", r.URL.Path,
+		"method", r.Method,
+		"status", status,
+		"size", size,
 	)
+}
+
+func clientIP(r *http.Request) string {
+	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
+		return forwarded
+	}
+	if realIP := r.Header.Get("X-Real-IP"); realIP != "" {
+		return realIP
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err == nil {
+		return host
+	}
+	return r.RemoteAddr
 }
