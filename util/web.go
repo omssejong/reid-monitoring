@@ -93,7 +93,6 @@ func WebApp() *http.Server {
 func appRouter(r chi.Router) {
 
 	// API 라우터 설정
-	// 고속검색 전용 라우터. 추후 통합 및 삭제 필요
 	r.Route("/monitoring/mgmt", func(reidV1 chi.Router) {
 		reidV1.Get("/server-info", reidServerInfo)
 		reidV1.With(SseMiddleware()).Get("/info", sseInfo)
@@ -139,7 +138,7 @@ func reidServerInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	serverInfoDict["gpu"] = gpuInfo
+	//serverInfoDict["gpu"] = gpuInfo
 
 	// 서버 메모리 정보 가져오기
 	memSize, err := GetTotalMemorySize()
@@ -155,43 +154,29 @@ func reidServerInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 서버 네트워크 정보 가져오기
-	networkBandwidth, err := GetNetworkBandwidth(networkName)
-
-	serverInfoDict["network"] = map[string]interface{}{
-		"interfaceName": networkName,
-		"bandwidth":     networkBandwidth,
-	}
 	serverInfoDict["hardwareInfos"] = map[string]interface{}{
-		"cpu":           cpuName,
-		"cpu_sockets":   cpuSockets,
-		"cpu_threads":   cpuThreads,
-		"disk":          fmt.Sprintf("%dGB", diskInfo["total"]),
-		"gpu":           gpuInfo,
-		"gpu_sockets":   len(gpuInfo),
-		"mem":           fmt.Sprintf("%0.2fGB", memSize),
-		"network_speed": networkBandwidth,
+		"cpu":         cpuName,
+		"cpu_sockets": cpuSockets,
+		"cpu_threads": cpuThreads,
+		"disk":        fmt.Sprintf("%dGB", diskInfo["total"]),
+		"gpu":         gpuInfo,
+		"gpu_sockets": len(gpuInfo),
+		"mem":         fmt.Sprintf("%0.2fGB", memSize),
 	}
-	serverInfoDict["monitorVersion"] = "1.17"
+	serverInfoDict["monitorVersion"] = "1.2"
 	// 서버 정보 세팅
 	//infoDict["server"] = serverInfoDict
 
 	// 서버 네트워크 정보 가져오기
-	networkInfo, err := GetNetworkInfo(networkName)
+	networkInfos, err := GetNetworkInterfaces()
 	if err != nil {
 		writeErrorJSON(w, http.StatusInternalServerError, err)
 		return
 	}
 
 	// 네트워크 정보 세팅
-	//infoDict["network"] = networkInfo
-	serverInfoDict["networkInfo"] = map[string]interface{}{
-		"dns":     "8.8.8.8",
-		"gateway": networkInfo["gateway"],
-		"iface":   networkName,
-		"ip":      networkInfo["ip"],
-		"netmask": networkInfo["netmask"],
-	}
+	//infoDict["network"] = networkInfos
+	serverInfoDict["networkInfos"] = networkInfos
 
 	// Version 정보 세팅
 	serverInfoDict["omeyeVersion"] = map[string]interface{}{

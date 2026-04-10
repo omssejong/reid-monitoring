@@ -16,43 +16,51 @@ type NetworkUsage struct {
 	bytesRecv uint64
 }
 
-// GetNetworkInfo returns interface IP/netmask and default gateway without shell commands.
-func GetNetworkInfo(interfaceName string) (map[string]interface{}, error) {
-	networkDict := make(map[string]interface{})
+type NetworkInterfaceInfo struct {
+	Name      string `json:"name"`
+	IP        string `json:"ip"`
+	Netmask   string `json:"netmask"`
+	Gateway   string `json:"gateway,omitempty"`
+	Bandwidth string `json:"bandwidth"`
+	IsDefault bool   `json:"isDefault"`
+}
 
-	ifc, err := net.InterfaceByName(interfaceName)
+// GetNetworkInterfaces returns every active IPv4-capable interface.
+func GetNetworkInterfaces() ([]NetworkInterfaceInfo, error) {
+	defaultIface, defaultGateway, err := getDefaultRoute()
 	if err != nil {
 		return nil, err
 	}
 
-	addrs, err := ifc.Addrs()
+	ifaces, err := net.Interfaces()
 	if err != nil {
 		return nil, err
 	}
 
-	for _, addr := range addrs {
-		ipNet, ok := addr.(*net.IPNet)
+	interfaces := make([]NetworkInterfaceInfo, 0)
+	for _, ifc := range ifaces {
+		if ifc.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		if ifc.Flags&net.FlagUp == 0 {
+			continue
+		}
+
+		info, ok, err := buildNetworkInterfaceInfo(ifc, defaultIface, defaultGateway)
+		if err != nil {
+			return nil, err
+		}
 		if !ok {
 			continue
 		}
-		ipv4 := ipNet.IP.To4()
-		if ipv4 == nil {
-			continue
-		}
-		networkDict["ip"] = ipv4.String()
-		networkDict["netmask"] = net.IP(ipNet.Mask).String()
-		break
+		interfaces = append(interfaces, info)
 	}
 
-	gateway, err := getDefaultGateway(interfaceName)
-	if err != nil {
-		return nil, err
-	}
-	if gateway != "" {
-		networkDict["gateway"] = gateway
+	if len(interfaces) == 0 {
+		return nil, fmt.Errorf("no active IPv4 network interfaces found")
 	}
 
-	return networkDict, nil
+	return interfaces, nil
 }
 
 // GetNetworkBandwidth reads link speed from sysfs (Mbps -> Mb/s string).
@@ -107,10 +115,47 @@ func GetNetworkUsage(interfaceName string) (NetworkUsage, error) {
 	return usage, scanner.Err()
 }
 
-func getDefaultGateway(interfaceName string) (string, error) {
+func buildNetworkInterfaceInfo(ifc net.Interface, defaultIface, defaultGateway string) (NetworkInterfaceInfo, bool, error) {
+	addrs, err := ifc.Addrs()
+	if err != nil {
+		return NetworkInterfaceInfo{}, false, err
+	}
+
+	for _, addr := range addrs {
+		ipNet, ok := addr.(*net.IPNet)
+		if !ok {
+			continue
+		}
+		ipv4 := ipNet.IP.To4()
+		if ipv4 == nil {
+			continue
+		}
+
+		bandwidth, err := GetNetworkBandwidth(ifc.Name)
+		if err != nil {
+			return NetworkInterfaceInfo{}, false, err
+		}
+
+		info := NetworkInterfaceInfo{
+			Name:      ifc.Name,
+			IP:        ipv4.String(),
+			Netmask:   net.IP(ipNet.Mask).String(),
+			Bandwidth: bandwidth,
+			IsDefault: ifc.Name == defaultIface,
+		}
+		if info.IsDefault {
+			info.Gateway = defaultGateway
+		}
+		return info, true, nil
+	}
+
+	return NetworkInterfaceInfo{}, false, nil
+}
+
+func getDefaultRoute() (string, string, error) {
 	file, err := os.Open("/proc/net/route")
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	defer file.Close()
 
@@ -121,16 +166,17 @@ func getDefaultGateway(interfaceName string) (string, error) {
 		if len(fields) < 3 {
 			continue
 		}
-		if fields[0] != interfaceName {
-			continue
-		}
 		if fields[1] != "00000000" {
 			continue
 		}
-		return parseLittleEndianHexIPv4(fields[2])
+		gateway, err := parseLittleEndianHexIPv4(fields[2])
+		if err != nil {
+			return "", "", err
+		}
+		return fields[0], gateway, nil
 	}
 
-	return "", scanner.Err()
+	return "", "", scanner.Err()
 }
 
 func parseLittleEndianHexIPv4(hexStr string) (string, error) {

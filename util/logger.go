@@ -1,15 +1,15 @@
 package util
 
 import (
-	"context"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
+
+	"github.com/rs/zerolog"
 )
 
 func NewLogger(fp, fn string) *Log {
@@ -21,66 +21,76 @@ func NewLogger(fp, fn string) *Log {
 		writer = io.MultiWriter(os.Stdout, file)
 	}
 
-	handler := slog.NewTextHandler(writer, &slog.HandlerOptions{
-		Level: slog.LevelDebug,
-	})
+	consoleWriter := zerolog.ConsoleWriter{
+		Out:        writer,
+		TimeFormat: "2006-01-02 15:04:05",
+	}
 
-	return &Log{logger: slog.New(handler)}
+	logger := zerolog.New(consoleWriter).With().Timestamp().Logger()
+	return &Log{logger: logger}
 }
 
 type Log struct {
-	logger *slog.Logger
+	logger zerolog.Logger
 }
 
 func (l *Log) Info(message string) {
 	_, file, line, _ := runtime.Caller(1)
 	fileName := filepath.Base(file)
-	l.logger.Log(context.Background(), slog.LevelInfo, fmt.Sprintf("[%s:%d] %s", fileName, line, message))
+	l.logger.Info().
+		Str("caller", fmt.Sprintf("%s:%d", fileName, line)).
+		Msg(message)
 }
 
 func (l *Log) Warn(message string) {
 	_, file, line, _ := runtime.Caller(1)
 	fileName := filepath.Base(file)
-	l.logger.Log(context.Background(), slog.LevelWarn, fmt.Sprintf("[%s:%d] %s", fileName, line, message))
+	l.logger.Warn().
+		Str("caller", fmt.Sprintf("%s:%d", fileName, line)).
+		Msg(message)
 }
 
 func (l *Log) Error(err error) {
 	_, file, line, _ := runtime.Caller(1)
 	fileName := filepath.Base(file)
-	l.logger.Log(context.Background(), slog.LevelError, fmt.Sprintf("[%s:%d] %s", fileName, line, err.Error()))
+	l.logger.Error().
+		Str("caller", fmt.Sprintf("%s:%d", fileName, line)).
+		Err(err).
+		Msg(err.Error())
 }
 
 func (l *Log) HttpInfoWithFields(r *http.Request, status, size int, message string) {
-	l.logger.Log(context.Background(), slog.LevelInfo, message,
-		"ip", clientIP(r),
-		"host", r.Host,
-		"path", r.URL.Path,
-		"method", r.Method,
-		"status", status,
-		"size", size,
-	)
+	l.logger.Info().
+		Str("ip", clientIP(r)).
+		Str("host", r.Host).
+		Str("path", r.URL.Path).
+		Str("method", r.Method).
+		Int("status", status).
+		Int("size", size).
+		Msg(message)
 }
 
 func (l *Log) HttpWarnWithFields(r *http.Request, status, size int, message string) {
-	l.logger.Log(context.Background(), slog.LevelWarn, message,
-		"ip", clientIP(r),
-		"host", r.Host,
-		"path", r.URL.Path,
-		"method", r.Method,
-		"status", status,
-		"size", size,
-	)
+	l.logger.Warn().
+		Str("ip", clientIP(r)).
+		Str("host", r.Host).
+		Str("path", r.URL.Path).
+		Str("method", r.Method).
+		Int("status", status).
+		Int("size", size).
+		Msg(message)
 }
 
 func (l *Log) HttpErrorWithFields(r *http.Request, status, size int, err error) {
-	l.logger.Log(context.Background(), slog.LevelError, err.Error(),
-		"ip", clientIP(r),
-		"host", r.Host,
-		"path", r.URL.Path,
-		"method", r.Method,
-		"status", status,
-		"size", size,
-	)
+	l.logger.Error().
+		Err(err).
+		Str("ip", clientIP(r)).
+		Str("host", r.Host).
+		Str("path", r.URL.Path).
+		Str("method", r.Method).
+		Int("status", status).
+		Int("size", size).
+		Msg(err.Error())
 }
 
 func clientIP(r *http.Request) string {
