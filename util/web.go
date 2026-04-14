@@ -326,7 +326,15 @@ func serviceControl(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		for _, target := range targets {
+		existing, missing := filterExistingServices(targets)
+		if len(missing) > 0 {
+			log.Warn(fmt.Sprintf("서비스 누락 - missing: %v, requested: %s", missing, targetType))
+		}
+		if len(existing) > 0 {
+			log.Info(fmt.Sprintf("실행 대상 - targets: %v, command: %s", existing, command))
+		}
+
+		for _, target := range existing {
 			if target == "middleserver" {
 				if command != "restart" {
 					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "middleserver target only supports restart command"})

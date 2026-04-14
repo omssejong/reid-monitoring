@@ -98,6 +98,10 @@ func newConfigFromDotEnv(raw []byte) (Config, error) {
 			ImageProcessingServiceName: getStringEnv(values, "IMAGE_PROCESSING_SERVICE_NAME", "SC_SETTING_IMAGE_PROCESSING_SERVICE_NAME"),
 			MediaStreamingServiceName:  getStringEnv(values, "MEDIA_STREAMING_SERVICE_NAME", "SC_SETTING_MEDIA_STREAMING_SERVICE_NAME"),
 			BackendServiceName:         getStringEnv(values, "BACKEND_SERVICE_NAME", "SC_SETTING_BACKEND_SERVICE_NAME"),
+			OSRMServiceName:            getStringEnv(values, "OSRM_SERVICE_NAME", "SC_SETTING_OSRM_SERVICE_NAME"),
+			OSRMContainerName:          getStringEnv(values, "OSRM_CONTAINER_NAME", "SC_SETTING_OSRM_CONTAINER_NAME"),
+			NominatimContainerName:     getStringEnv(values, "NOMINATIM_CONTAINER_NAME", "SC_SETTING_NOMINATIM_CONTAINER_NAME"),
+			RedisServiceName:           getStringEnv(values, "REDIS_SERVICE_NAME", "SC_SETTING_REDIS_SERVICE_NAME"),
 			MiddleServerServiceName:    getStringEnv(values, "MIDDLE_SERVER_SERVICE_NAME", "SC_SETTING_MIDDLE_SERVER_SERVICE_NAME"),
 			AiServiceName:              getStringEnv(values, "AI_SERVICE_NAME", "SC_SETTING_AI_SERVICE_NAME"),
 			MiddleServiceName:          getStringEnv(values, "MIDDLE_SERVICE_NAME", "SC_SETTING_MIDDLE_SERVICE_NAME"),
@@ -232,6 +236,10 @@ type SettingSection struct {
 	ImageProcessingServiceName string `yaml:"imageProcessingServiceName"`
 	MediaStreamingServiceName  string `yaml:"mediaStreamingServiceName"`
 	BackendServiceName         string `yaml:"backendServiceName"`
+	OSRMServiceName            string `yaml:"osrmServiceName"`
+	OSRMContainerName          string `yaml:"osrmContainerName"`
+	NominatimContainerName     string `yaml:"nominatimContainerName"`
+	RedisServiceName           string `yaml:"redisServiceName"`
 	MiddleServerServiceName    string `yaml:"middleServerServiceName"`
 	AiServiceName              string `yaml:"aiServiceName"`
 	MiddleServiceName          string `yaml:"middleServiceName"`
