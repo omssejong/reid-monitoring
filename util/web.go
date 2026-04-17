@@ -10,11 +10,21 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 )
+
+// appContext 비동기 Job 실행에 사용할 앱 전역 context (main에서 SetAppContext 호출)
+var appContext = context.Background()
+
+// SetAppContext 앱 수명 컨텍스트 주입 (main.go에서 호출)
+func SetAppContext(ctx context.Context) {
+	appContext = ctx
+}
 
 /**
  * RequestData
@@ -101,8 +111,12 @@ func appRouter(r chi.Router) {
 		reidV1.Post("/servicectrl", serviceControl)
 		reidV1.Post("/shutdown", shutdownServer)
 		reidV1.Post("/log/download", downloadLog)
-		reidV1.Post("/delete/files", deleteFiles)
+		reidV1.Delete("/storage", deleteStorage)
+		reidV1.Get("/jobs/{jobId}", getStorageJob)
 		reidV1.Post("/upload/patch", patchService)
+		reidV1.Get("/thresholds", getThresholds)
+		reidV1.Post("/thresholds", updateThresholds)
+		reidV1.Get("/alerts", getAlerts)
 	})
 	log.Info("version 1.0.0.260407")
 }
@@ -381,37 +395,219 @@ type LogRequestStruct struct {
 	LogType   []string `json:"logType"`
 }
 
-func deleteFiles(w http.ResponseWriter, r *http.Request) {
-	var request DeleteFilesRequestST
-	if err := decodeJSONBody(r, &request); err != nil {
-		log.Error(fmt.Errorf("request %v", err))
-		writeErrorJSON(w, http.StatusBadRequest, err)
+// deleteStorage 정책 기반 스토리지 삭제 (percent 또는 from/to).
+//   DELETE /monitoring/mgmt/storage?percent={0~100}
+//   DELETE /monitoring/mgmt/storage?from=yyyyMMdd&to=yyyyMMdd
+func deleteStorage(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	percentStr := strings.TrimSpace(q.Get("percent"))
+	fromStr := strings.TrimSpace(q.Get("from"))
+	toStr := strings.TrimSpace(q.Get("to"))
+
+	if percentStr == "" && fromStr == "" && toStr == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "percent or (from, to) is required",
+		})
 		return
 	}
 
-	if len(request.Paths) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "paths is required"})
+	store := GetStorageJobStore()
+	if store == nil {
+		writeErrorJSON(w, http.StatusInternalServerError, fmt.Errorf("storage job store not initialized"))
 		return
 	}
 
-	result, err := DeleteFilesByList(request.Paths)
+	// percent 모드 우선
+	if percentStr != "" {
+		deleteStoragePercent(w, r, store, percentStr)
+		return
+	}
+
+	// date 모드
+	deleteStorageDate(w, r, store, fromStr, toStr)
+}
+
+func deleteStoragePercent(w http.ResponseWriter, r *http.Request, store *StorageJobStore, percentStr string) {
+	percent, err := strconv.ParseFloat(percentStr, 64)
 	if err != nil {
-		log.Error(err)
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": fmt.Sprintf("invalid percent: %s", percentStr),
+		})
+		return
+	}
+	if percent < 0 || percent > 100 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": fmt.Sprintf("percent out of range: %.2f (must be 0~100)", percent),
+		})
+		return
+	}
+
+	job, info, err := store.StartPercent(appContext, percent)
+	if err != nil {
+		if errors.Is(err, ErrStorageJobBusy) {
+			writeJSON(w, http.StatusConflict, map[string]string{
+				"error":   "another storage job is running",
+				"current": store.currentJobID(),
+			})
+			return
+		}
 		writeErrorJSON(w, http.StatusInternalServerError, err)
 		return
 	}
 
+	// 이미 목표 달성 → 동기 200 + 현재 상태
+	if job == nil && info != nil {
+		response := new(ResponseST)
+		response.Code = http.StatusOK
+		response.Message = "Target already met"
+		response.Data = serverStorageInfoToMap(*info)
+		response.Success = true
+		writeJSON(w, http.StatusOK, response)
+		return
+	}
+
+	// 비동기 Job 수락
+	log.Info(fmt.Sprintf("storage percent accepted: id=%s target=%.2f", job.ID, percent))
 	response := new(ResponseST)
-	response.Code = http.StatusOK
-	response.Message = "Delete Files Success"
+	response.Code = http.StatusAccepted
+	response.Message = "Storage job accepted"
 	response.Data = map[string]interface{}{
-		"requested": result.Requested,
-		"deleted":   result.Deleted,
-		"excluded":  result.Excluded,
+		"mode":      "percent",
+		"jobId":     job.ID,
+		"statusUrl": fmt.Sprintf("/monitoring/mgmt/jobs/%s", job.ID),
 	}
 	response.Success = true
+	writeJSON(w, http.StatusAccepted, response)
+}
 
+func deleteStorageDate(w http.ResponseWriter, r *http.Request, store *StorageJobStore, fromStr, toStr string) {
+	if fromStr == "" || toStr == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "both from and to are required",
+		})
+		return
+	}
+
+	const layout = "20060102"
+	from, err := time.Parse(layout, fromStr)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": fmt.Sprintf("invalid from: %s (expected yyyyMMdd)", fromStr),
+		})
+		return
+	}
+	to, err := time.Parse(layout, toStr)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": fmt.Sprintf("invalid to: %s (expected yyyyMMdd)", toStr),
+		})
+		return
+	}
+	if from.After(to) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": fmt.Sprintf("from is after to: %s > %s", fromStr, toStr),
+		})
+		return
+	}
+
+	// 날짜 범위: from 00:00:00 ~ to+1일 00:00:00 (end exclusive)
+	toExclusive := to.Add(24 * time.Hour)
+
+	job, err := store.StartDate(appContext, from, toExclusive, fromStr, toStr)
+	if err != nil {
+		if errors.Is(err, ErrStorageJobBusy) {
+			writeJSON(w, http.StatusConflict, map[string]string{
+				"error":   "another storage job is running",
+				"current": store.currentJobID(),
+			})
+			return
+		}
+		writeErrorJSON(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	log.Info(fmt.Sprintf("storage date accepted: id=%s from=%s to=%s", job.ID, fromStr, toStr))
+	response := new(ResponseST)
+	response.Code = http.StatusAccepted
+	response.Message = "Storage job accepted"
+	response.Data = map[string]interface{}{
+		"mode":      "date",
+		"jobId":     job.ID,
+		"statusUrl": fmt.Sprintf("/monitoring/mgmt/jobs/%s", job.ID),
+	}
+	response.Success = true
+	writeJSON(w, http.StatusAccepted, response)
+}
+
+// getStorageJob Job 상태 조회
+func getStorageJob(w http.ResponseWriter, r *http.Request) {
+	jobId := chi.URLParam(r, "jobId")
+	if jobId == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "jobId is required"})
+		return
+	}
+
+	store := GetStorageJobStore()
+	if store == nil {
+		writeErrorJSON(w, http.StatusInternalServerError, fmt.Errorf("storage job store not initialized"))
+		return
+	}
+
+	job, ok := store.GetJob(jobId)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "job not found"})
+		return
+	}
+
+	snap := job.Snapshot()
+	data := map[string]interface{}{
+		"jobId":        snap.ID,
+		"mode":         snap.Mode,
+		"status":       snap.Status,
+		"progress":     snap.Progress,
+		"deletedCount": snap.DeletedCount,
+		"deletedBytes": snap.DeletedBytes,
+		"startedAt":    snap.StartedAt,
+		"finishedAt":   snap.FinishedAt,
+	}
+	switch snap.Mode {
+	case "percent":
+		data["targetPercent"] = snap.TargetPercent
+		data["startPercent"] = snap.StartPercent
+		data["currentPercent"] = snap.CurrentPercent
+		if snap.TargetReached != nil {
+			data["targetReached"] = *snap.TargetReached
+		}
+	case "date":
+		data["from"] = snap.From
+		data["to"] = snap.To
+		data["totalCandidates"] = snap.TotalCandidates
+		data["processed"] = snap.Processed
+	}
+	if snap.ErrorMsg != "" {
+		data["error"] = snap.ErrorMsg
+	}
+	if snap.StorageInfo != nil {
+		data["storageInfo"] = serverStorageInfoToMap(*snap.StorageInfo)
+	}
+
+	response := new(ResponseST)
+	response.Code = http.StatusOK
+	response.Message = "Storage Job Status"
+	response.Data = data
+	response.Success = true
 	writeJSON(w, http.StatusOK, response)
+}
+
+// serverStorageInfoToMap ServerStorageInfo를 map으로 변환 (응답용)
+func serverStorageInfoToMap(info ServerStorageInfo) map[string]interface{} {
+	return map[string]interface{}{
+		"total":        info.Total,
+		"used":         info.Used,
+		"avail":        info.Avail,
+		"usedPercent":  info.UsedPercent,
+		"availPercent": info.AvailPercent,
+	}
 }
 
 // Monitoring Log Download API
@@ -639,6 +835,94 @@ func patchService(w http.ResponseWriter, r *http.Request) {
 		ErrorTitle: "PatchSuccess",
 		ExtraData:  nil,
 	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+// getThresholds 현재 임계값 조회
+func getThresholds(w http.ResponseWriter, r *http.Request) {
+	store := GetThresholdStore()
+	if store == nil {
+		writeErrorJSON(w, http.StatusInternalServerError, fmt.Errorf("threshold store not initialized"))
+		return
+	}
+	disk := store.GetDisk()
+
+	response := new(ResponseST)
+	response.Code = http.StatusOK
+	response.Message = "Thresholds"
+	response.Data = map[string]interface{}{
+		"disk": disk,
+	}
+	response.Success = true
+	writeJSON(w, http.StatusOK, response)
+}
+
+// updateThresholds 임계값 변경 요청 처리
+func updateThresholds(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		Disk *DiskThreshold `json:"disk"`
+	}
+	if err := decodeJSONBody(r, &request); err != nil {
+		log.Error(fmt.Errorf("update thresholds request: %v", err))
+		writeErrorJSON(w, http.StatusBadRequest, err)
+		return
+	}
+
+	store := GetThresholdStore()
+	if store == nil {
+		writeErrorJSON(w, http.StatusInternalServerError, fmt.Errorf("threshold store not initialized"))
+		return
+	}
+
+	if request.Disk != nil {
+		if err := store.UpdateDisk(*request.Disk); err != nil {
+			writeErrorJSON(w, http.StatusBadRequest, err)
+			return
+		}
+		log.Info(fmt.Sprintf("disk threshold updated: warning=%.2f", request.Disk.Warning))
+	}
+
+	response := new(ResponseST)
+	response.Code = http.StatusOK
+	response.Message = "Thresholds Updated"
+	response.Data = map[string]interface{}{
+		"disk": store.GetDisk(),
+	}
+	response.Success = true
+	writeJSON(w, http.StatusOK, response)
+}
+
+// getAlerts 현재 디스크 사용률이 임계값을 초과했는지 조회
+func getAlerts(w http.ResponseWriter, r *http.Request) {
+	store := GetThresholdStore()
+	if store == nil {
+		writeErrorJSON(w, http.StatusInternalServerError, fmt.Errorf("threshold store not initialized"))
+		return
+	}
+
+	usage, err := GetDiskUsage()
+	if err != nil {
+		writeErrorJSON(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	breach := store.CheckDisk(usage)
+	data := map[string]interface{}{
+		"currentValue": usage,
+	}
+	if breach != nil {
+		data["hasBreach"] = true
+		data["metric"] = breach.Metric
+		data["threshold"] = breach.Threshold
+	} else {
+		data["hasBreach"] = false
+	}
+
+	response := new(ResponseST)
+	response.Code = http.StatusOK
+	response.Message = "Alerts"
+	response.Data = data
+	response.Success = true
 	writeJSON(w, http.StatusOK, response)
 }
 

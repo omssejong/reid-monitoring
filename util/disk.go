@@ -44,3 +44,15 @@ func GetDiskUsage() (float64, error) {
 
 	return float64(used) / float64(denom) * 100, nil
 }
+
+// diskTotalFree 지정한 경로가 속한 파티션의 total/free 바이트 반환 (df 의미).
+// total = 전체 용량, free = 사용 가능 용량 (bavail 기준)
+func diskTotalFree(path string) (total uint64, free uint64, err error) {
+	var stat syscall.Statfs_t
+	if err = syscall.Statfs(path, &stat); err != nil {
+		return 0, 0, err
+	}
+	total = stat.Blocks * uint64(stat.Bsize)
+	free = stat.Bavail * uint64(stat.Bsize)
+	return
+}

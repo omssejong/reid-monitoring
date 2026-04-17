@@ -17,6 +17,15 @@ func main() {
 	appCtx, cancelAppCtx := context.WithCancel(context.Background())
 	defer cancelAppCtx()
 
+	// Threshold store 초기화 (thresholds.yml 로드 또는 기본값 생성)
+	if err := util.InitThresholdStore("conf.d/thresholds.yml"); err != nil {
+		log.Fatalf("threshold store init failed: %v\n", err)
+	}
+
+	// 비동기 스토리지 삭제 Job 저장소 초기화 + 앱 컨텍스트 주입
+	util.SetAppContext(appCtx)
+	util.InitStorageJobStore(appCtx)
+
 	go util.StartDataCleanup(appCtx, "data")
 
 	// Start monitoring server
