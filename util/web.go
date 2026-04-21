@@ -178,6 +178,7 @@ func reidServerInfo(w http.ResponseWriter, r *http.Request) {
 		"mem":         fmt.Sprintf("%0.2fGB", memSize),
 	}
 	serverInfoDict["monitorVersion"] = "1.2"
+	serverInfoDict["serverRole"] = ServerRoleForAPI() // 내부 analyze → 외부 agent
 	// 서버 정보 세팅
 	//infoDict["server"] = serverInfoDict
 
@@ -218,12 +219,17 @@ func sseInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 클라이언트 연결 종료/쓰기 실패로 핸들러가 return 할 때
+	// GetSystemInfo 고루틴도 반드시 정리되도록 명시적 cancel 보장
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+
 	systemInfo := make(chan map[string]any)
-	go GetSystemInfo(r.Context(), systemInfo)
+	go GetSystemInfo(ctx, systemInfo)
 
 	for {
 		select {
-		case <-r.Context().Done():
+		case <-ctx.Done():
 			return
 		case info := <-systemInfo:
 			if v, ok := info["error"]; ok {
@@ -253,7 +259,7 @@ func httpInfo(w http.ResponseWriter, r *http.Request) {
 	go GetSystemInfo(ctx, systemInfo)
 
 	select {
-	case <-r.Context().Done():
+	case <-ctx.Done():
 		return
 	case info := <-systemInfo:
 		if v, ok := info["error"]; ok {
@@ -396,8 +402,9 @@ type LogRequestStruct struct {
 }
 
 // deleteStorage 정책 기반 스토리지 삭제 (percent 또는 from/to).
-//   DELETE /monitoring/mgmt/storage?percent={0~100}
-//   DELETE /monitoring/mgmt/storage?from=yyyyMMdd&to=yyyyMMdd
+//
+//	DELETE /monitoring/mgmt/storage?percent={0~100}
+//	DELETE /monitoring/mgmt/storage?from=yyyyMMdd&to=yyyyMMdd
 func deleteStorage(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	percentStr := strings.TrimSpace(q.Get("percent"))

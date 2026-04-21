@@ -14,11 +14,12 @@ func ResolveServiceTargets(targetType string) ([]string, error) {
 
 	switch target {
 	case "back":
-		return collectServiceNames(
-			configs.SC.Setting.BackendServiceName,
-		), nil
-	case "main":
-		return splitServiceNames(configs.SC.Setting.AiServiceName), nil
+		return collectServiceNames(configs.SC.Setting.BackendServiceName), nil
+	case "analyze", "main":
+		// "main"은 레거시 호환 alias — analyze 서비스와 동일하게 동작
+		return splitServiceNames(configs.SC.Setting.AnalyzeServiceName), nil
+	case "downloader":
+		return splitServiceNames(configs.SC.Setting.DownloaderServiceName), nil
 	case "mediaserver":
 		return splitServiceNames(configs.SC.Setting.MediaStreamingServiceName), nil
 	case "middleserver":
@@ -130,6 +131,61 @@ func getDockerContainerStatus(containerName string) (string, error) {
 	return "inactive", nil
 }
 
+// appendRouteServiceStatus OSRM + Nominatim 컨테이너 상태를 "omeye3.route.service"로 집계해
+// serviceInfoList에 append한다. 존재하는 컨테이너가 하나도 없으면 항목을 추가하지 않는다.
+func appendRouteServiceStatus(serviceInfoList *[]map[string]interface{}) {
+	routeContainers := make([]string, 0)
+	for _, c := range splitServiceNames(configs.SC.Setting.OSRMContainerName) {
+		if c != "" {
+			routeContainers = append(routeContainers, c)
+		}
+	}
+	if n := configs.SC.Setting.NominatimContainerName; n != "" {
+		routeContainers = append(routeContainers, n)
+	}
+	if len(routeContainers) == 0 {
+		return
+	}
+
+	aggregated := "active"
+	anyFound := false
+	for _, cname := range routeContainers {
+		status, err := getDockerContainerStatus(cname)
+		if err != nil {
+			continue
+		}
+		anyFound = true
+		if status != "active" {
+			aggregated = "inactive"
+		}
+	}
+	if anyFound {
+		*serviceInfoList = append(*serviceInfoList, map[string]interface{}{
+			"serviceName":   "omeye3.route.service",
+			"serviceStatus": aggregated,
+		})
+	}
+}
+
+// appendRedisServiceStatus Redis 컨테이너 상태(docker inspect + PING)를 serviceInfoList에 append.
+func appendRedisServiceStatus(serviceInfoList *[]map[string]interface{}) {
+	name := configs.Redis.RedisContainerName
+	if name == "" {
+		return
+	}
+	status, err := getDockerContainerStatus(name)
+	if err != nil {
+		return
+	}
+	if status == "active" && !checkRedisPing() {
+		status = "inactive"
+	}
+	*serviceInfoList = append(*serviceInfoList, map[string]interface{}{
+		"serviceName":   "redis",
+		"serviceStatus": status,
+	})
+}
+
 // checkRedisPing Redis에 TCP 연결 후 AUTH + PING을 보내 PONG 응답 여부를 확인한다.
 func checkRedisPing() bool {
 	addr := fmt.Sprintf("%s:%d", configs.Redis.RedisHost, configs.Redis.RedisPort)
@@ -180,7 +236,7 @@ func checkRedisPing() bool {
 func GetServiceStatus() ([]map[string]interface{}, error) {
 	serviceInfoList := make([]map[string]interface{}, 0)
 
-	for _, target := range strings.Split(monitoringTarget, ",") {
+	for _, target := range activeServices() {
 		target = strings.TrimSpace(target)
 		if target == "" {
 			continue
@@ -217,41 +273,15 @@ func GetServiceStatus() ([]map[string]interface{}, error) {
 		}
 	}
 
-	// Docker 컨테이너 상태 체크 (OSRM - 복수 지원, Nominatim, Redis)
-	// OSRM: 쉼표 구분으로 여러 컨테이너 지원
-	for _, osrmContainer := range splitServiceNames(configs.SC.Setting.OSRMContainerName) {
-		status, err := getDockerContainerStatus(osrmContainer)
-		if err != nil {
-			continue
-		}
-		serviceInfoList = append(serviceInfoList, map[string]interface{}{
-			"serviceName":   osrmContainer,
-			"serviceStatus": status,
-		})
-	}
-
-	// Nominatim
-	if name := configs.SC.Setting.NominatimContainerName; name != "" {
-		status, err := getDockerContainerStatus(name)
-		if err == nil {
-			serviceInfoList = append(serviceInfoList, map[string]interface{}{
-				"serviceName":   "nominatim",
-				"serviceStatus": status,
-			})
-		}
-	}
-
-	// Redis: docker inspect + PING 체크
-	if name := configs.Redis.RedisContainerName; name != "" {
-		status, err := getDockerContainerStatus(name)
-		if err == nil {
-			if status == "active" && !checkRedisPing() {
-				status = "inactive"
-			}
-			serviceInfoList = append(serviceInfoList, map[string]interface{}{
-				"serviceName":   "redis",
-				"serviceStatus": status,
-			})
+	// serverType 별 docker 서비스 모니터링 (config의 mainDockerServices / analyzeDockerServices)
+	for _, item := range activeDockerServices() {
+		switch strings.ToLower(strings.TrimSpace(item)) {
+		case "route":
+			appendRouteServiceStatus(&serviceInfoList)
+		case "redis":
+			appendRedisServiceStatus(&serviceInfoList)
+		default:
+			log.Warn("unknown docker service keyword: " + item)
 		}
 	}
 
@@ -384,7 +414,8 @@ func ShutdownServer() error {
 }
 
 func MiddleserverRestart() error {
-	cmd := exec.Command("bash", "-c", fmt.Sprintf("echo %s | sudo virsh reboot %s --mode acpi", password, configs.SC.Setting.MediaStreamingServiceName))
+	// root 권한으로 실행되므로 sudo 불필요
+	cmd := exec.Command("bash", "-c", fmt.Sprintf("virsh reboot %s --mode acpi", configs.SC.Setting.MediaStreamingServiceName))
 	err := cmd.Run()
 	if err != nil {
 		log.Error(fmt.Errorf("error rebooting middle server: %v", err))

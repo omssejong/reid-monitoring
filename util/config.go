@@ -73,9 +73,9 @@ type SettingConfig struct {
 
 type SettingSection struct {
 	RootPath                   string `yaml:"rootPath"`
+	LogPath                    string `yaml:"logPath"` // 빈 값이면 {rootPath}/log
 	ServerIP                   string `yaml:"serverIP"`
 	ServerPort                 int    `yaml:"serverPort"`
-	UserPassword               string `yaml:"userPassword"`
 	NetworkName                string `yaml:"networkName"`
 	ImageProcessingServiceName string `yaml:"imageProcessingServiceName"`
 	MediaStreamingServiceName  string `yaml:"mediaStreamingServiceName"`
@@ -85,7 +85,8 @@ type SettingSection struct {
 	NominatimContainerName     string `yaml:"nominatimContainerName"`
 	RedisServiceName           string `yaml:"redisServiceName"`
 	MiddleServerServiceName    string `yaml:"middleServerServiceName"`
-	AiServiceName              string `yaml:"aiServiceName"`
+	AnalyzeServiceName         string `yaml:"analyzeServiceName"`
+	DownloaderServiceName      string `yaml:"downloaderServiceName"`
 	MiddleServiceName          string `yaml:"middleServiceName"`
 	Token                      string `yaml:"token"`
 	ServerType                 string `yaml:"serverType"`
@@ -96,6 +97,11 @@ type SettingSection struct {
 	StorageRootDir       string   `yaml:"storageRootDir"`
 	StorageProtectedDirs []string `yaml:"storageProtectedDirs"`
 	StorageReidResultDir string   `yaml:"storageReidResultDir"`
+
+	// serverType 별 docker 서비스 모니터링 대상
+	// 키워드: "route" (omeye3.route.service - OSRM+Nominatim 집계), "redis" (Redis docker+PING)
+	MainDockerServices    []string `yaml:"mainDockerServices"`
+	AnalyzeDockerServices []string `yaml:"analyzeDockerServices"`
 }
 
 type VersionSection struct {

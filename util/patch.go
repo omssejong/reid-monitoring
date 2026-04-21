@@ -118,8 +118,7 @@ func executePatch() error {
 	//args := []string{">>", "/usr/local/oms/omeye/omeye2/log/back/" + patchLogFileName}
 	//cmd := exec.Command("temp/patch_script.sh", args...)
 	cmd := exec.Command("temp/patch_script.sh")
-	//buffer := bytes.NewReader([]byte(configs.SC.Setting.UserPassword))
-	buffer := strings.NewReader(configs.SC.Setting.UserPassword)
+	// root 권한으로 실행되므로 password stdin 주입 불필요
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		log.Error(err)
@@ -140,8 +139,6 @@ func executePatch() error {
 		log.Info(fmt.Sprintf("patch log script: %s", string(cmdStdoutBuffer.Bytes())))
 		log.Info(fmt.Sprintf("patch log err: %s", string(cmdStderrBuffer.Bytes())))
 	}()
-	cmd.Stdin = buffer
-
 	runErr := cmd.Start()
 	if runErr != nil {
 		log.Error(runErr)

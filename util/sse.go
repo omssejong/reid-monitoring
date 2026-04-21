@@ -25,7 +25,12 @@ getInfo:
 				log.Error(err)
 				temp["error"] = err
 			}
-			info <- temp
+			// ctx가 취소되었거나 수신자가 사라진 경우 블로킹되지 않도록 select 보호
+			select {
+			case info <- temp:
+			case <-ctx.Done():
+				break getInfo
+			}
 			startNetworkUsage = tempNetworkUsage
 		}
 	}
