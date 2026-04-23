@@ -210,8 +210,8 @@ func (s *StorageJobStore) register(job *StorageJob) {
 func (s *StorageJobStore) runPercent(ctx context.Context, job *StorageJob) {
 	defer s.finishJob(job)
 
-	root, protected, reidResult := storageConfig()
-	candidates, err := collectCandidates(root, protected, reidResult)
+	root, protected, reidResult, excluded := storageConfig()
+	candidates, err := collectCandidates(root, protected, reidResult, excluded)
 	if err != nil {
 		s.setError(job, fmt.Sprintf("collect candidates: %v", err))
 		return
@@ -282,8 +282,8 @@ func (s *StorageJobStore) runPercent(ctx context.Context, job *StorageJob) {
 func (s *StorageJobStore) runDate(ctx context.Context, job *StorageJob, from, to time.Time) {
 	defer s.finishJob(job)
 
-	root, protected, reidResult := storageConfig()
-	candidates, err := collectCandidates(root, protected, reidResult)
+	root, protected, reidResult, excluded := storageConfig()
+	candidates, err := collectCandidates(root, protected, reidResult, excluded)
 	if err != nil {
 		s.setError(job, fmt.Sprintf("collect candidates: %v", err))
 		return

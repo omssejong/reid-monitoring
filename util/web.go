@@ -649,6 +649,20 @@ func downloadLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 날짜 범위에 해당하는 로그 파일이 0건이면 별도 에러 반환
+	if len(files) == 0 {
+		log.Info(fmt.Sprintf("no log files matched range: start=%s end=%s", request.StartDate, request.EndDate))
+		writeJSON(w, http.StatusBadRequest, PatchResponseST{
+			Code:       400,
+			Success:    false,
+			Message:    "해당 기간에 로그가 존재하지 않습니다",
+			ErrorCode:  "dl-04",
+			ErrorTitle: "NoLogsFound",
+			ExtraData:  nil,
+		})
+		return
+	}
+
 	compressPath, err := EncryptCompress(files)
 	if err != nil {
 		log.Error(err)

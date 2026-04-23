@@ -97,6 +97,7 @@ type SettingSection struct {
 	StorageRootDir       string   `yaml:"storageRootDir"`
 	StorageProtectedDirs []string `yaml:"storageProtectedDirs"`
 	StorageReidResultDir string   `yaml:"storageReidResultDir"`
+	StorageExcludedDirs  []string `yaml:"storageExcludedDirs"` // 전체 경로, 임의 깊이. 해당 디렉토리와 하위 전체 삭제 제외
 
 	// serverType 별 docker 서비스 모니터링 대상
 	// 키워드: "route" (omeye3.route.service - OSRM+Nominatim 집계), "redis" (Redis docker+PING)

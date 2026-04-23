@@ -36,8 +36,9 @@ type candidate struct {
 	isReidID bool      // true면 RemoveAll
 }
 
-// storageConfig 현재 설정값 (없으면 기본값)
-func storageConfig() (root string, protected []string, reidResult string) {
+// storageConfig 현재 설정값 (없으면 기본값).
+// excluded 는 전체 경로 리스트이며 해당 디렉토리와 하위 전체를 삭제 대상에서 제외한다.
+func storageConfig() (root string, protected []string, reidResult string, excluded []string) {
 	root = configs.SC.Setting.StorageRootDir
 	if root == "" {
 		root = defaultStorageRootDir
@@ -52,6 +53,14 @@ func storageConfig() (root string, protected []string, reidResult string) {
 	reidResult = configs.SC.Setting.StorageReidResultDir
 	if reidResult == "" {
 		reidResult = defaultStorageReidResultDir
+	}
+
+	// excluded 경로 정규화 (전체 경로, 임의 깊이)
+	for _, p := range configs.SC.Setting.StorageExcludedDirs {
+		if p == "" {
+			continue
+		}
+		excluded = append(excluded, filepath.Clean(p))
 	}
 	return
 }
@@ -111,12 +120,17 @@ func roundTo(v float64, n int) float64 {
 }
 
 // collectCandidates root 아래 삭제 가능한 후보 수집.
-// - protected 하위의 디렉토리 자체는 후보에서 제외하되 내부 파일/하위 디렉토리는 개별 수집
-// - reidResult 하위는 {id} 단위로 묶어서 한 항목으로 수집 (하위는 walk 하지 않음)
-func collectCandidates(root string, protectedNames []string, reidResultName string) ([]candidate, error) {
+// - protectedNames 하위의 디렉토리 자체는 후보에서 제외하되 내부 파일/하위 디렉토리는 개별 수집
+// - reidResultName 하위는 {id} 단위로 묶어서 한 항목으로 수집 (하위는 walk 하지 않음)
+// - excludedPaths 에 매칭되는 디렉토리는 디렉토리 자체와 하위 전체가 완전 제외됨 (임의 깊이)
+func collectCandidates(root string, protectedNames []string, reidResultName string, excludedPaths []string) ([]candidate, error) {
 	protected := make(map[string]struct{}, len(protectedNames))
 	for _, p := range protectedNames {
 		protected[p] = struct{}{}
+	}
+	excluded := make(map[string]struct{}, len(excludedPaths))
+	for _, p := range excludedPaths {
+		excluded[p] = struct{}{}
 	}
 	reidResultPath := filepath.Join(root, reidResultName)
 
@@ -130,6 +144,14 @@ func collectCandidates(root string, protectedNames []string, reidResultName stri
 		}
 		if path == root {
 			return nil
+		}
+
+		// 완전 제외 디렉토리: 해당 경로와 하위 전체 스킵
+		if info.IsDir() {
+			if _, ok := excluded[path]; ok {
+				log.Info(fmt.Sprintf("storage excluded dir skipped: %s", path))
+				return filepath.SkipDir
+			}
 		}
 
 		rel, _ := filepath.Rel(root, path)
