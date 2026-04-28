@@ -91,6 +91,10 @@ func systemInfos(before NetworkUsage) (map[string]any, NetworkUsage, error) {
 		return temp, usage, err
 	}
 	temp["disk"] = fmt.Sprintf("%0.2f%%", diskUsagePercent)
+	if store := GetThresholdStore(); store != nil {
+		diskThreshold := store.GetDisk()
+		temp["storageThreshold"] = diskThreshold.Warning
+	}
 	usage, err = GetNetworkUsage(configs.SC.Setting.NetworkName)
 	if err != nil {
 		return temp, usage, err
