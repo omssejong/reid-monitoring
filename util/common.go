@@ -31,7 +31,7 @@ var (
 	imageProcessingLogName = configs.SC.Category.ImageProcessing
 	mediaStreamingLogName  = configs.SC.Category.MediaStreaming
 	monitoringLogName      = configs.SC.Category.Monitoring
-	log                    = NewLogger(logPath, monitoringLogName)
+	log                    = NewLogger(fmt.Sprintf("%s/%s", logPath, "monitoring"), monitoringLogName)
 	encryptKey             = []byte(configs.SC.Setting.Token) // ?뷀샇????
 )
 
