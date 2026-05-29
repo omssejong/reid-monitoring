@@ -1,0 +1,15 @@
+[Unit]
+Description=OMEYE_SC_MONITORING
+After=network.target
+
+[Service]
+StandardOutput=file:/home/oms/sc/log/sc_monitoring.log
+User=oms
+Group=oms
+WorkingDirectory=/home/oms/sc/monitoring/
+ExecStart=/bin/bash -c "/home/oms/sc/monitoring/oms-monitoring prod"
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

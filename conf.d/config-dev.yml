@@ -1,0 +1,8 @@
+CONFIG:
+  ConfigPath: /home/oms/sc/monitoring/conf.d/monitoring-dev.ini
+REDIS:
+  RedisContainerName: redis
+  RedisHost: localhost
+  RedisPort: 6379
+  Username: root
+  Password: oms20190211!

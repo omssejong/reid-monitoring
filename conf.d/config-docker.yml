@@ -1,0 +1,8 @@
+CONFIG:
+  ConfigPath: /go/src/github.com/rebornist/monitoring/conf.d/omeye_ai.ini
+REDIS:
+  RedisContainerName: redis
+  RedisHost: redis
+  RedisPort: 6379
+  Username: root
+  Password: oms20190211!
