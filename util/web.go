@@ -219,26 +219,17 @@ func sseInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 클라이언트 연결 종료/쓰기 실패로 핸들러가 return 할 때
-	// GetSystemInfo 고루틴도 반드시 정리되도록 명시적 cancel 보장
-	ctx, cancel := context.WithCancel(r.Context())
-	defer cancel()
+	ch := GetCollector().Subscribe()
+	defer GetCollector().Unsubscribe(ch)
 
-	systemInfo := make(chan map[string]any)
-	go GetSystemInfo(ctx, systemInfo)
-
+	ctx := r.Context()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case info := <-systemInfo:
-			if v, ok := info["error"]; ok {
-				writeErrorJSON(w, http.StatusInternalServerError, v.(error))
-				return
-			}
+		case info := <-ch:
 			payload, err := json.Marshal(info)
 			if err != nil {
-				writeErrorJSON(w, http.StatusInternalServerError, err)
 				return
 			}
 			if _, err := io.WriteString(w, "event: message\n"); err != nil {
@@ -253,21 +244,12 @@ func sseInfo(w http.ResponseWriter, r *http.Request) {
 }
 
 func httpInfo(w http.ResponseWriter, r *http.Request) {
-	systemInfo := make(chan map[string]any)
-	ctx, cancel := context.WithCancel(r.Context())
-	defer cancel()
-	go GetSystemInfo(ctx, systemInfo)
-
-	select {
-	case <-ctx.Done():
+	snap := GetCollector().Snapshot()
+	if snap == nil {
+		writeErrorJSON(w, http.StatusServiceUnavailable, errors.New("system info not ready"))
 		return
-	case info := <-systemInfo:
-		if v, ok := info["error"]; ok {
-			writeErrorJSON(w, http.StatusInternalServerError, v.(error))
-			return
-		}
-		writeJSON(w, http.StatusOK, info)
 	}
+	writeJSON(w, http.StatusOK, snap)
 }
 
 // Server Stop API

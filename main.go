@@ -26,6 +26,9 @@ func main() {
 	util.SetAppContext(appCtx)
 	util.InitStorageJobStore(appCtx)
 
+	// 시스템 리소스 수집기 워밍업 (기동 시 1회, 약 1초 소요)
+	util.InitCollector()
+
 	go util.StartDataCleanup(appCtx, "data")
 
 	// Start monitoring server

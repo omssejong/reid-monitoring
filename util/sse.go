@@ -1,7 +1,6 @@
 package util
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"os/exec"
@@ -10,34 +9,8 @@ import (
 	"time"
 )
 
-func GetSystemInfo(ctx context.Context, info chan map[string]any) {
-	ticker := time.NewTicker(1 * time.Second)
-	defer ticker.Stop()
-	startNetworkUsage, _ := GetNetworkUsage(configs.SC.Setting.NetworkName)
-getInfo:
-	for {
-		select {
-		case <-ctx.Done():
-			break getInfo
-		case <-ticker.C:
-			temp, tempNetworkUsage, err := systemInfos(startNetworkUsage)
-			if err != nil {
-				log.Error(err)
-				temp["error"] = err
-			}
-			// ctx가 취소되었거나 수신자가 사라진 경우 블로킹되지 않도록 select 보호
-			select {
-			case info <- temp:
-			case <-ctx.Done():
-				break getInfo
-			}
-			startNetworkUsage = tempNetworkUsage
-		}
-	}
-	log.Info("quit getting system info ")
-}
-
-func systemInfos(before NetworkUsage) (map[string]any, NetworkUsage, error) {
+// buildSnapshot cpuUsage(이미 계산된 값)와 직전 network 사용량으로 스냅샷 1개 생성
+func buildSnapshot(cpuUsage float64, before NetworkUsage) (map[string]any, NetworkUsage, error) {
 	usage := NetworkUsage{}
 	temp := make(map[string]any)
 	temp["monitorVersion"] = "2.0"
@@ -51,10 +24,6 @@ func systemInfos(before NetworkUsage) (map[string]any, NetworkUsage, error) {
 		return temp, usage, err
 	}
 	temp["serviceStatus"] = serviceStatus
-	cpuUsage, err := GetCPUUsage()
-	if err != nil {
-		return temp, usage, err
-	}
 	temp["cpu"] = fmt.Sprintf("%0.2f%%", cpuUsage)
 	gpusUsage, err := GetGPUUsage()
 	if err != nil {

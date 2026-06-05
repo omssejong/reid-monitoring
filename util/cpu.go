@@ -86,6 +86,24 @@ func GetCPUModelNameAndPhysicalThreadCount() (string, int, error) {
 	return modelName, physicalThreads, nil
 }
 
+// calcCPUUsage 두 /proc/stat 스냅샷 차이로 사용률(%) 계산 (sleep 없음)
+func calcCPUUsage(first, second cpuStat) float64 {
+	totalDelta := second.total - first.total
+	idleDelta := second.idle - first.idle
+	if totalDelta == 0 {
+		return 0
+	}
+
+	used := float64(totalDelta-idleDelta) / float64(totalDelta) * 100
+	if used < 0 {
+		used = 0
+	}
+	if used > 100 {
+		used = 100
+	}
+	return used
+}
+
 func GetCPUUsage() (float64, error) {
 	first, err := readCPUStat()
 	if err != nil {
@@ -101,20 +119,7 @@ func GetCPUUsage() (float64, error) {
 		return 0, err
 	}
 
-	totalDelta := second.total - first.total
-	idleDelta := second.idle - first.idle
-	if totalDelta == 0 {
-		return 0, nil
-	}
-
-	used := float64(totalDelta-idleDelta) / float64(totalDelta) * 100
-	if used < 0 {
-		used = 0
-	}
-	if used > 100 {
-		used = 100
-	}
-	return used, nil
+	return calcCPUUsage(first, second), nil
 }
 
 func GetCPUCores() (int, error) {
