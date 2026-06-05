@@ -1,4 +1,4 @@
-module github.com/kyeongbin-oms/reid-monitoring
+module github.com/omssejong/reid-monitoring
 
 go 1.26.0
 

@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/kyeongbin-oms/reid-monitoring/util"
+	"github.com/omssejong/reid-monitoring/util"
 )
 
 func main() {
