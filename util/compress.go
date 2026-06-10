@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -26,7 +27,7 @@ import (
  * @version: 1.0.0
  * @since: 2024.07.10
  */
-func EncryptCompress(targets []string) (string, error) {
+func EncryptCompress(targets []string, baseDir string) (string, error) {
 
 	currentTimeStr := time.Now().Format("2006-01-02_150405")
 
@@ -80,13 +81,13 @@ func EncryptCompress(targets []string) (string, error) {
 		// 암호화된 내용을 hex로 변환
 		encryptedHex := hex.EncodeToString(ciphertext)
 
-		// 파일 경로와 파일 이름 분리
-		_, fileName := filepath.Split(target)
+		// zip 내부 경로: baseDir 기준 상대경로로 디렉터리 구조 보존 (파일명 충돌 방지)
+		zipName := zipEntryName(baseDir, target)
 
 		// zip 내에 파일 정보 생성
-		f, err := zipWriter.Create(fileName)
+		f, err := zipWriter.Create(zipName)
 		if err != nil {
-			log.Error(fmt.Errorf("failed to create %s in zip: %v", fileName, err))
+			log.Error(fmt.Errorf("failed to create %s in zip: %v", zipName, err))
 			continue
 		}
 
@@ -107,6 +108,20 @@ func EncryptCompress(targets []string) (string, error) {
 	log.Info(fmt.Sprintf("%d files compressed", cnt))
 
 	return zipFile.Name(), nil
+}
+
+/**
+ * zipEntryName
+ * baseDir 기준 상대경로를 zip 엔트리 이름으로 변환한다.
+ * 상대경로 계산이 불가능하거나 baseDir 밖으로 벗어나면 파일명만 사용한다.
+ * zip 표준 구분자(/)에 맞춰 슬래시로 통일한다.
+ */
+func zipEntryName(baseDir, target string) string {
+	rel, err := filepath.Rel(baseDir, target)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return filepath.Base(target)
+	}
+	return filepath.ToSlash(rel)
 }
 
 /**
@@ -172,6 +187,14 @@ func DecryptUnzip(zipFilePath string) {
 		// Decrypt the ciphertext
 		stream := cipher.NewCFBDecrypter(block, iv)
 		stream.XORKeyStream(ciphertext, ciphertext)
+
+		// 디렉터리 구조 보존 zip 대응: 상위 디렉터리 먼저 생성
+		if dir := filepath.Dir(f.Name); dir != "." {
+			if err := os.MkdirAll(dir, 0755); err != nil {
+				log.Error(fmt.Errorf("failed to create dir %s: %v", dir, err))
+				continue
+			}
+		}
 
 		// Write the decrypted data to a file
 		err = ioutil.WriteFile(f.Name, ciphertext, 0644)

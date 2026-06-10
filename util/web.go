@@ -645,7 +645,7 @@ func downloadLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	compressPath, err := EncryptCompress(files)
+	compressPath, err := EncryptCompress(files, rootPath)
 	if err != nil {
 		log.Error(err)
 		writeJSON(w, http.StatusInternalServerError, PatchResponseST{

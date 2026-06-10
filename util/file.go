@@ -56,21 +56,21 @@ func DeleteFilesAnHours(path string, retention time.Duration) error {
 
 /**
  * FilterLogFilesByDate
- * 날짜 범위 내의 로그 파일 필터링 함수
+ * 로그 디렉터리(logPath, {rootPath}/ai/logs)를 통째로 훑어
+ * 수정 시각(ModTime)이 날짜 범위 안에 드는 파일을 확장자 구분 없이 반환한다.
  *
- * @param start string
- * @param end string
+ * @param start string  (yyyyMMdd)
+ * @param end   string  (yyyyMMdd)
  *
  * @return []string
  * @return error
  *
  * @auther: Han Seong San
- * @version: 1.0.0
+ * @version: 2.0.0
  * @since: 2024.06.21
  */
 func FilterLogFilesByDate(start, end string) ([]string, error) {
 
-	//today := time.Now().Format("20060102")
 	parseStartTime, err := time.Parse("20060102", start)
 	if err != nil {
 		return nil, err
@@ -79,138 +79,46 @@ func FilterLogFilesByDate(start, end string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	// 종료일 당일 끝(23:59:59)까지 포함
 	parseEndTime = parseEndTime.Add(86399 * time.Second)
-	var files []string
-	//files = append(files, "/var/log/syslog") // syslog 가져오는 것이 필요할 경우 사용하기
 
-	targetFiles, err := searchFiles(logPath, ".log")
-	if err != nil {
-		return nil, err
+	var files []string
+
+	// 통째로 훑을 로그 디렉터리 목록
+	roots := []string{
+		logPath,
+		filepath.Join(rootPath, "ai", "logs"),
 	}
 
-	fmt.Println(parseStartTime, parseEndTime)
-	for _, target := range targetFiles {
-		if info, err := os.Stat(target); err == nil {
-			lastModifyTime := info.ModTime()
-			if lastModifyTime.After(parseEndTime) || lastModifyTime.Before(parseStartTime) {
+	for _, root := range roots {
+		// 존재하지 않는 디렉터리는 건너뛴다
+		if _, err := os.Stat(root); err != nil {
+			if os.IsNotExist(err) {
+				log.Info("skip not-exist dir: " + root)
+				continue
+			}
+			return nil, err
+		}
+
+		// 디렉터리 하위 전체 파일 수집 (확장자 무관)
+		found, err := searchFiles(root, "")
+		if err != nil {
+			return nil, err
+		}
+
+		// 수정 시각이 날짜 범위 안인 파일만 선택
+		for _, target := range found {
+			info, err := os.Stat(target)
+			if err != nil {
+				continue
+			}
+			modTime := info.ModTime()
+			if modTime.Before(parseStartTime) || modTime.After(parseEndTime) {
 				continue
 			}
 			files = append(files, target)
 		}
 	}
-
-	if _, err := os.Stat(filepath.Join(rootPath, "hsa", "log")); err == nil {
-		targetFiles, err = searchFiles(filepath.Join(rootPath, "hsa", "log"), ".log")
-		for _, target := range targetFiles {
-			if info, err := os.Stat(target); err == nil {
-				lastModifyTime := info.ModTime()
-				if lastModifyTime.After(parseEndTime) || lastModifyTime.Before(parseStartTime) {
-					continue
-				}
-				files = append(files, target)
-			}
-		}
-	}
-
-	//
-	//// 날짜 범위 내의 날짜 목록 가져오기
-	//dates, err := getDatesInRange(start, end)
-	//if err != nil {
-	//	log.Error(fmt.Errorf("failed to get dates in range: %w", err))
-	//	return nil, err
-	//}
-	//
-	//log.Info(fmt.Sprintf("%s ~ %s dates in range", dates[0], dates[len(dates)-1]))
-	//
-	//// 로그 파일 목록 가져오기
-	//targetFiles, err := searchFiles(logPath, ".log")
-	//if err != nil {
-	//	log.Error(fmt.Errorf("failed to search for log files: %w", err))
-	//	return nil, err
-	//}
-	//
-	//log.Info(fmt.Sprintf("%d files searched", len(targetFiles)))
-	//
-	//files = append(files, "/var/log/syslog")
-	//
-	//// 날짜 범위 내의 파일 목록 가져오기
-	//for _, file := range targetFiles {
-	//
-	//	for _, date := range dates {
-	//		if strings.Contains(file, date) {
-	//			log.Info(fmt.Sprintf("files in date range: %s", file))
-	//			files = append(files, file)
-	//		}
-	//	}
-	//}
-	//
-	//if today == end || today == start {
-	//	aiLogPath := fmt.Sprintf("%s.log", filepath.Join(logPath, aiLogName))
-	//	if _, err := os.Stat(aiLogPath); err == nil {
-	//		files = append(files, aiLogPath)
-	//	}
-	//
-	//	backendLogPath := fmt.Sprintf("%s.log", filepath.Join(logPath, backendLogName))
-	//	if _, err := os.Stat(backendLogPath); err == nil {
-	//		files = append(files, backendLogPath)
-	//	}
-	//
-	//	backendAuthLogPath := fmt.Sprintf("%s.log", filepath.Join(logPath, backendAuthLogName))
-	//	if _, err := os.Stat(backendAuthLogPath); err == nil {
-	//		files = append(files, backendAuthLogPath)
-	//	}
-	//
-	//	backendGatewayLogPath := fmt.Sprintf("%s.log", filepath.Join(logPath, backendGatewayLogName))
-	//	if _, err := os.Stat(backendGatewayLogPath); err == nil {
-	//		files = append(files, backendGatewayLogPath)
-	//	}
-	//
-	//	backendMainLogPath := fmt.Sprintf("%s.log", filepath.Join(logPath, backendMainLogName))
-	//	if _, err := os.Stat(backendMainLogPath); err == nil {
-	//		files = append(files, backendMainLogPath)
-	//	}
-	//
-	//	backendAiLogPath := fmt.Sprintf("%s.log", filepath.Join(logPath, backendAiLogName))
-	//	if _, err := os.Stat(backendAiLogPath); err == nil {
-	//		files = append(files, backendAiLogPath)
-	//	}
-	//
-	//	backendSettingsLogPath := fmt.Sprintf("%s.log", filepath.Join(logPath, backendSettingsLogName))
-	//	if _, err := os.Stat(backendSettingsLogPath); err == nil {
-	//		files = append(files, backendSettingsLogPath)
-	//	}
-	//
-	//	backendUserLogPath := fmt.Sprintf("%s.log", filepath.Join(logPath, backendUserLogName))
-	//	if _, err := os.Stat(backendUserLogPath); err == nil {
-	//		files = append(files, backendUserLogPath)
-	//	}
-	//
-	//	backendVmsLogPath := fmt.Sprintf("%s.log", filepath.Join(logPath, backendVmsLogName))
-	//	if _, err := os.Stat(backendVmsLogPath); err == nil {
-	//		files = append(files, backendVmsLogPath)
-	//	}
-	//
-	//	frontendLogPath := fmt.Sprintf("%s.log", filepath.Join(logPath, frontendLogName))
-	//	if _, err := os.Stat(frontendLogPath); err == nil {
-	//		files = append(files, frontendLogPath)
-	//	}
-	//
-	//	imageProcessingLogPath := fmt.Sprintf("%s.log", filepath.Join(logPath, imageProcessingLogName))
-	//	if _, err := os.Stat(imageProcessingLogPath); err == nil {
-	//		files = append(files, imageProcessingLogPath)
-	//	}
-	//
-	//	mediaStreamingLogPath := fmt.Sprintf("%s.log", filepath.Join(logPath, mediaStreamingLogName))
-	//	if _, err := os.Stat(mediaStreamingLogPath); err == nil {
-	//		files = append(files, mediaStreamingLogPath)
-	//	}
-	//
-	//	monitoringLogPath := fmt.Sprintf("%s.log", filepath.Join(logPath, monitoringLogName))
-	//	if _, err := os.Stat(monitoringLogPath); err == nil {
-	//		files = append(files, monitoringLogPath)
-	//	}
-	//
-	//}
 
 	log.Info(fmt.Sprintf("%d files filtered", len(files)))
 
@@ -218,6 +126,8 @@ func FilterLogFilesByDate(start, end string) ([]string, error) {
 
 }
 
+// searchFiles targetPath 하위를 재귀 탐색하여 파일 경로를 반환한다.
+// extName이 빈 문자열이면 모든 파일, 아니면 해당 확장자 파일만 수집한다.
 func searchFiles(targetPath, extName string) ([]string, error) {
 
 	var files []string
@@ -234,7 +144,7 @@ func searchFiles(targetPath, extName string) ([]string, error) {
 		}
 
 		log.Info("search file path: " + path)
-		if filepath.Ext(path) == extName {
+		if extName == "" || filepath.Ext(path) == extName {
 			files = append(files, path)
 		}
 
@@ -246,25 +156,4 @@ func searchFiles(targetPath, extName string) ([]string, error) {
 	}
 
 	return files, nil
-}
-
-func getDatesInRange(start, end string) ([]string, error) {
-	const layout = "20060102"
-	startDate, err := time.Parse(layout, start)
-	if err != nil {
-		return nil, err
-	}
-
-	endDate, err := time.Parse(layout, end)
-	if err != nil {
-		return nil, err
-	}
-
-	var dates []string
-	for !startDate.After(endDate) {
-		dates = append(dates, startDate.Format(layout))
-		startDate = startDate.AddDate(0, 0, 1)
-	}
-
-	return dates, nil
 }
