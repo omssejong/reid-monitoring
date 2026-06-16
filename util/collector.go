@@ -14,7 +14,13 @@ type Collector struct {
 	subs   map[chan map[string]any]struct{}
 	cancel context.CancelFunc
 	last   atomic.Value // map[string]any
+	svc    atomic.Value // []map[string]interface{} — 느린 루프가 갱신하는 서비스 상태 캐시
 }
+
+// serviceStatusInterval 서비스 상태(systemctl/docker/redis) 수집 주기.
+// CPU/메모리 등 1초 메트릭과 달리 잘 안 변하고 비싸므로 느슨하게 잡아
+// 매초 외부 프로세스 스폰이 1초 fast loop를 막지 않게 한다.
+const serviceStatusInterval = 5 * time.Second
 
 var systemCollector = &Collector{subs: make(map[chan map[string]any]struct{})}
 
@@ -76,6 +82,10 @@ func (c *Collector) Snapshot() map[string]any {
 // run 1초 ticker로 스냅샷을 만들어 캐시 갱신 및 브로드캐스트한다.
 // ticker 주기(1초)가 곧 CPU 샘플 간격이 되어 time.Sleep이 사라진다.
 func (c *Collector) run(ctx context.Context) {
+	// 서비스 상태는 느린 루프에서 별도로 수집해 캐시한다. fast loop는 캐시값만 읽어
+	// systemctl/docker/redis 호출에 막히지 않으므로 1초 주기가 실제로 지켜진다.
+	go c.runServices(ctx)
+
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
@@ -93,7 +103,7 @@ func (c *Collector) run(ctx context.Context) {
 				cpu = calcCPUUsage(prevCPU, curCPU)
 				prevCPU = curCPU
 			}
-			snap, newNet, err := buildSnapshot(cpu, startNet)
+			snap, newNet, err := buildSnapshot(cpu, startNet, c.serviceSnapshot())
 			if err != nil {
 				// 에러 시 broadcast/last 갱신 생략, 직전 정상값 유지 (연결 끊지 않음)
 				log.Error(err)
@@ -104,6 +114,39 @@ func (c *Collector) run(ctx context.Context) {
 			c.broadcast(snap)
 		}
 	}
+}
+
+// runServices 서비스 상태를 느린 주기(serviceStatusInterval)로 수집해 캐시한다.
+// 기동 직후 1회 즉시 수집해 cold start 시 빈 서비스 목록을 피한다.
+func (c *Collector) runServices(ctx context.Context) {
+	collect := func() {
+		status, err := GetServiceStatus()
+		if err != nil {
+			log.Error(err)
+			return
+		}
+		c.svc.Store(status)
+	}
+	collect()
+
+	ticker := time.NewTicker(serviceStatusInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			collect()
+		}
+	}
+}
+
+// serviceSnapshot 캐시된 서비스 상태를 반환한다(없으면 빈 슬라이스).
+func (c *Collector) serviceSnapshot() []map[string]interface{} {
+	if v, ok := c.svc.Load().([]map[string]interface{}); ok {
+		return v
+	}
+	return []map[string]interface{}{}
 }
 
 // broadcast 각 구독 채널에 non-blocking 전송한다.
@@ -138,7 +181,12 @@ func InitCollector() {
 
 	startNet, _ := GetNetworkUsage(configs.SC.Setting.NetworkName)
 
-	snap, _, err := buildSnapshot(cpu, startNet)
+	// 서비스 상태도 1회 선수집해 캐시 — fast loop/SSE 첫 응답의 cold start 대비
+	if status, err := GetServiceStatus(); err == nil {
+		systemCollector.svc.Store(status)
+	}
+
+	snap, _, err := buildSnapshot(cpu, startNet, systemCollector.serviceSnapshot())
 	if err != nil {
 		log.Error(err)
 		return

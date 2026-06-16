@@ -8,6 +8,9 @@
 *.so
 *.dylib
 
+# Built monitoring binary (build artifact)
+/oms-monitoring
+
 # Test binary, built with `go test.txt -c`
 *.test
 

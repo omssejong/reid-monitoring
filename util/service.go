@@ -1,6 +1,7 @@
 package util
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"os"
@@ -8,6 +9,23 @@ import (
 	"strings"
 	"time"
 )
+
+// cmdTimeout 서비스 상태 조회용 외부 명령 1건의 최대 대기 시간.
+// 행 걸린 systemctl/docker/redis 하나가 전체 수집을 초 단위로 막지 않도록 제한한다.
+const cmdTimeout = 2 * time.Second
+
+// systemctlIsActive systemctl is-active를 timeout과 함께 실행해 상태 문자열을 반환한다.
+// 타임아웃/실패 시 빈 출력 → "inactive"로 처리(기존 동작 유지).
+func systemctlIsActive(target string) string {
+	ctx, cancel := context.WithTimeout(context.Background(), cmdTimeout)
+	defer cancel()
+	out, _ := exec.CommandContext(ctx, "systemctl", "is-active", target).Output()
+	active := strings.TrimSpace(string(out))
+	if active == "" {
+		return "inactive"
+	}
+	return active
+}
 
 func ResolveServiceTargets(targetType string) ([]string, error) {
 	target := strings.TrimSpace(strings.ToLower(targetType))
@@ -77,7 +95,9 @@ func filterExistingServices(targets []string) (existing []string, missing []stri
 // loadSystemdUnits systemctl list-units를 한 번 호출해서 로드된 서비스 이름 set을 반환한다.
 func loadSystemdUnits() map[string]bool {
 	units := make(map[string]bool)
-	cmd := exec.Command("bash", "-c", "systemctl list-units --type=service --all --no-legend --no-pager")
+	ctx, cancel := context.WithTimeout(context.Background(), cmdTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "systemctl", "list-units", "--type=service", "--all", "--no-legend", "--no-pager")
 	out, err := cmd.Output()
 	if err != nil {
 		log.Error(fmt.Errorf("systemctl list-units 조회 실패: %v", err))
@@ -119,7 +139,9 @@ func collectServiceNames(serviceGroups ...string) []string {
 // "running"이면 "active", 그 외면 "inactive"를 반환한다.
 // 컨테이너가 존재하지 않으면 error를 반환한다.
 func getDockerContainerStatus(containerName string) (string, error) {
-	cmd := exec.Command("bash", "-c", fmt.Sprintf("docker inspect -f {{.State.Status}} %s", containerName))
+	ctx, cancel := context.WithTimeout(context.Background(), cmdTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "docker", "inspect", "-f", "{{.State.Status}}", containerName)
 	out, err := cmd.Output()
 	if err != nil {
 		return "", err
@@ -188,14 +210,14 @@ func appendRedisServiceStatus(serviceInfoList *[]map[string]interface{}) {
 
 // checkRedisPing Redis에 TCP 연결 후 AUTH + PING을 보내 PONG 응답 여부를 확인한다.
 func checkRedisPing() bool {
-	addr := fmt.Sprintf("%s:%d", configs.Redis.RedisHost, configs.Redis.RedisPort)
-	conn, err := net.DialTimeout("tcp", addr, 3*time.Second)
+	addr := net.JoinHostPort(configs.Redis.RedisHost, fmt.Sprint(configs.Redis.RedisPort))
+	conn, err := net.DialTimeout("tcp", addr, cmdTimeout)
 	if err != nil {
 		return false
 	}
 	defer conn.Close()
 
-	conn.SetDeadline(time.Now().Add(3 * time.Second))
+	conn.SetDeadline(time.Now().Add(cmdTimeout))
 	buf := make([]byte, 128)
 
 	// 비밀번호가 설정되어 있으면 AUTH 먼저 전송
@@ -258,17 +280,10 @@ func GetServiceStatus() ([]map[string]interface{}, error) {
 				"serviceStatus": status,
 			})
 		} else {
-			// systemd 서비스 상태 확인
-			cmd := exec.Command("bash", "-c", fmt.Sprintf("systemctl is-active %s", target))
-			out, _ := cmd.Output()
-			active := strings.TrimSpace(string(out))
-			// is-active 결과: active, inactive, failed, activating, deactivating 등
-			if active == "" {
-				active = "inactive"
-			}
+			// systemd 서비스 상태 확인 (timeout 적용, is-active 결과: active/inactive/failed 등)
 			serviceInfoList = append(serviceInfoList, map[string]interface{}{
 				"serviceName":   target,
-				"serviceStatus": active,
+				"serviceStatus": systemctlIsActive(target),
 			})
 		}
 	}

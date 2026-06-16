@@ -2,8 +2,32 @@ package util
 
 import (
 	"fmt"
+	"sync"
+
 	"github.com/mindprince/gonvml"
 )
+
+var (
+	nvmlMu    sync.Mutex
+	nvmlReady bool
+)
+
+// ensureNVML NVML을 1회만 초기화하고 이후 재사용한다.
+// 매 tick Initialize/Shutdown 반복을 제거한다. 초기화 실패 시(드라이버 미준비 등)
+// nvmlReady를 false로 두어 다음 호출에서 재시도한다.
+// 장수 프로세스이므로 Shutdown은 호출하지 않는다(프로세스 종료 시 자동 정리).
+func ensureNVML() error {
+	nvmlMu.Lock()
+	defer nvmlMu.Unlock()
+	if nvmlReady {
+		return nil
+	}
+	if err := gonvml.Initialize(); err != nil {
+		return err
+	}
+	nvmlReady = true
+	return nil
+}
 
 /**
  * GetGPUInfo
@@ -20,13 +44,11 @@ func GetGPUInfo() (map[string]interface{}, error) {
 
 	gpuInfoDict := make(map[string]interface{})
 
-	// NVML 초기화
-	err := gonvml.Initialize()
-	if err != nil {
+	// NVML 초기화 (1회만, 이후 재사용)
+	if err := ensureNVML(); err != nil {
 		log.Error(fmt.Errorf("initializing NVML: %v", err))
 		return nil, err
 	}
-	defer gonvml.Shutdown()
 
 	// GPU 디바이스 수 가져오기
 	count, err := gonvml.DeviceCount()
@@ -63,13 +85,11 @@ func GetGPUInfo() (map[string]interface{}, error) {
 
 func ReidGetGPUInfo() ([]string, error) {
 
-	// NVML 초기화
-	err := gonvml.Initialize()
-	if err != nil {
+	// NVML 초기화 (1회만, 이후 재사용)
+	if err := ensureNVML(); err != nil {
 		log.Error(fmt.Errorf("initializing NVML: %v", err))
 		return nil, err
 	}
-	defer gonvml.Shutdown()
 
 	// GPU 디바이스 수 가져오기
 	count, err := gonvml.DeviceCount()
@@ -115,13 +135,11 @@ func GetGPUUsage() (map[string]interface{}, error) {
 
 	gpuUtilDict := make(map[string]interface{})
 
-	// NVML 초기화
-	err := gonvml.Initialize()
-	if err != nil {
+	// NVML 초기화 (1회만, 이후 재사용 — 매 tick init/shutdown 제거)
+	if err := ensureNVML(); err != nil {
 		log.Error(fmt.Errorf("initializing NVML: %v", err))
 		return nil, err
 	}
-	defer gonvml.Shutdown()
 
 	// GPU 디바이스 수 가져오기
 	count, err := gonvml.DeviceCount()

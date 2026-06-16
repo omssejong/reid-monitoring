@@ -2,15 +2,15 @@ package util
 
 import (
 	"fmt"
-	"io"
-	"os/exec"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 )
 
-// buildSnapshot cpuUsage(이미 계산된 값)와 직전 network 사용량으로 스냅샷 1개 생성
-func buildSnapshot(cpuUsage float64, before NetworkUsage) (map[string]any, NetworkUsage, error) {
+// buildSnapshot cpuUsage(이미 계산된 값)·직전 network 사용량·캐시된 서비스 상태로 스냅샷 1개 생성.
+// serviceStatus는 느린 루프(collector.runServices)가 갱신한 캐시값을 그대로 넣는다.
+func buildSnapshot(cpuUsage float64, before NetworkUsage, serviceStatus []map[string]interface{}) (map[string]any, NetworkUsage, error) {
 	usage := NetworkUsage{}
 	temp := make(map[string]any)
 	temp["monitorVersion"] = "2.0"
@@ -19,9 +19,8 @@ func buildSnapshot(cpuUsage float64, before NetworkUsage) (map[string]any, Netwo
 		return temp, usage, err
 	}
 	temp["upTime"] = upTime
-	serviceStatus, err := GetServiceStatus()
-	if err != nil {
-		return temp, usage, err
+	if serviceStatus == nil {
+		serviceStatus = []map[string]interface{}{}
 	}
 	temp["serviceStatus"] = serviceStatus
 	temp["cpu"] = fmt.Sprintf("%0.2f%%", cpuUsage)
@@ -80,25 +79,13 @@ func buildSnapshot(cpuUsage float64, before NetworkUsage) (map[string]any, Netwo
 }
 
 func getServerAliveTime() (string, error) {
-	cmd := exec.Command("cat", "/proc/uptime")
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return "", err
-	}
-	err = cmd.Start()
-	if err != nil {
-		return "", err
-	}
-	raw, err := io.ReadAll(stdout)
+	// /proc/uptime 직접 읽기 (cat 프로세스 스폰 제거)
+	raw, err := os.ReadFile("/proc/uptime")
 	if err != nil {
 		return "", err
 	}
 	serverRunTime := strings.Split(string(raw), " ")[0]
 	convServerRunTime, err := strconv.ParseFloat(serverRunTime, 32)
-	if err != nil {
-		return "", err
-	}
-	err = cmd.Wait()
 	if err != nil {
 		return "", err
 	}
