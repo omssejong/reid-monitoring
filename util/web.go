@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -95,6 +96,9 @@ func WebApp() *http.Server {
 		Addr:    fmt.Sprintf(":%d", configs.SC.Setting.ServerPort),
 		Handler: r,
 	}
+
+	info, _ := debug.ReadBuildInfo()
+	log.Info(fmt.Sprintf("Build Info: %v", info.Main.Version))
 
 	return srv
 }
