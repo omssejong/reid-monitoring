@@ -3,6 +3,7 @@ package util
 import (
 	"fmt"
 	"os"
+	"path"
 )
 
 var (
@@ -90,5 +91,6 @@ func resolveLogPath() string {
 	if p := configs.SC.Setting.LogPath; p != "" {
 		return p
 	}
-	return fmt.Sprintf("%s/%s", configs.SC.Setting.RootPath, "log", "monitoring")
+	//return fmt.Sprintf("%s/%s", configs.SC.Setting.RootPath, "log", "monitoring")
+	return path.Join(configs.SC.Setting.RootPath, "log", "monitoring")
 }
