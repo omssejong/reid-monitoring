@@ -97,7 +97,7 @@ func getServerAliveTime() (string, error) {
 }
 
 func calNetworkBandwidth(packet uint64) string {
-	bandwidthUnit := []string{"bps", "Kbps", "Mbps", "Gbps"}
+	bandwidthUnit := []string{"Bit", "KB", "MB", "GB"}
 	idx := 0
 	tmp := float64(packet)
 	for tmp >= 1024 && idx < 3 {

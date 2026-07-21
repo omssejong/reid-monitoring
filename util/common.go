@@ -33,7 +33,7 @@ var (
 	mediaStreamingLogName  = configs.SC.Category.MediaStreaming
 	monitoringLogName      = configs.SC.Category.Monitoring
 	log                    = NewLogger(fmt.Sprintf("%s/%s", logPath, "monitoring"), monitoringLogName)
-	encryptKey             = []byte(configs.SC.Setting.Token) // ?뷀샇????
+	encryptKey             = []byte(configs.SC.Setting.Token) // 로그 암호화 토큰
 )
 
 // activeServices serverType 값에 따라 모니터링/제어 대상 서비스 목록을 반환한다.
