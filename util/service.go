@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -36,7 +37,7 @@ func ResolveServiceTargets(targetType string) ([]string, error) {
 	case "analyze", "main":
 		// "main"은 레거시 호환 alias — analyze 서비스와 동일하게 동작
 		return splitServiceNames(configs.SC.Setting.AnalyzeServiceName), nil
-	case "downloader":
+	case "downloader", "vmsinterface":
 		return splitServiceNames(configs.SC.Setting.DownloaderServiceName), nil
 	case "mediaserver":
 		return splitServiceNames(configs.SC.Setting.MediaStreamingServiceName), nil
@@ -65,7 +66,10 @@ func filterExistingServices(targets []string) (existing []string, missing []stri
 		systemdUnits = loadSystemdUnits()
 	}
 
+	var camelCasePattern = regexp.MustCompile(`([a-z0-9])([A-Z])`)
+
 	for _, t := range targets {
+		t = strings.ToLower(camelCasePattern.ReplaceAllString(t, `${1}-${2}`))
 		switch {
 		case t == "middleserver":
 			// virsh 환경 특수성: 검증 건너뜀
