@@ -26,10 +26,16 @@ func main() {
 	util.SetAppContext(appCtx)
 	util.InitStorageJobStore(appCtx)
 
+	// REID_BACK이 Redis에 올린 서버 설정 구독 (보관 일수 조회용)
+	util.InitOmeyeSettingsStore(appCtx)
+
 	// 시스템 리소스 수집기 워밍업 (기동 시 1회, 약 1초 소요)
 	util.InitCollector()
 
 	go util.StartDataCleanup(appCtx, "data")
+
+	// filestorage 보관 기간 초과 항목 하루 주기 정리
+	go util.StartStorageRetention(appCtx)
 
 	// Start monitoring server
 	srv := util.WebApp()

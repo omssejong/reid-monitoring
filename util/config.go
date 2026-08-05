@@ -99,6 +99,11 @@ type SettingSection struct {
 	StorageReidResultDir string   `yaml:"storageReidResultDir"`
 	StorageExcludedDirs  []string `yaml:"storageExcludedDirs"` // 전체 경로, 임의 깊이. 해당 디렉토리와 하위 전체 삭제 제외
 
+	// 보관 기간 자동 정리 설정 (없으면 기본값 적용)
+	StorageRetentionDirs []string `yaml:"storageRetentionDirs"` // 정리 대상 디렉토리명 (storageRootDir 기준 직계)
+	// StorageRetentionHour 실행 시각(KST, 0~23). 0시도 유효한 값이라 미설정과 구분하기 위해 포인터로 둔다.
+	StorageRetentionHour *int `yaml:"storageRetentionHour"`
+
 	// serverType 별 docker 서비스 모니터링 대상
 	// 키워드: "route" (omeye3.route.service - OSRM+Nominatim 집계), "redis" (Redis docker+PING)
 	MainDockerServices    []string `yaml:"mainDockerServices"`

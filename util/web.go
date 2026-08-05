@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -97,8 +96,7 @@ func WebApp() *http.Server {
 		Handler: r,
 	}
 
-	info, _ := debug.ReadBuildInfo()
-	log.Info(fmt.Sprintf("Build Info: %v", info.Main.Version))
+	log.Info(fmt.Sprintf("Build Info: %s", GetBuildInfo()))
 
 	return srv
 }
@@ -574,6 +572,11 @@ func getStorageJob(w http.ResponseWriter, r *http.Request) {
 	case "date":
 		data["from"] = snap.From
 		data["to"] = snap.To
+		data["totalCandidates"] = snap.TotalCandidates
+		data["processed"] = snap.Processed
+	case "retention":
+		data["retentionDays"] = snap.RetentionDays
+		data["cutoff"] = snap.Cutoff
 		data["totalCandidates"] = snap.TotalCandidates
 		data["processed"] = snap.Processed
 	}

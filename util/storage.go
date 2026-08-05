@@ -12,12 +12,20 @@ const (
 	bytesInGiB = 1024 * 1024 * 1024
 )
 
-// 기본값 (config 미설정 시 사용)
+// 기본값 (config 미설정 시 사용). REID_BACK의 path 설정과 동일하게 맞춘다.
 var (
-	defaultStorageRootDir       = "/opt/oms/omeye/filestorage"
-	defaultStorageProtectedDirs = []string{"video", "live", "de_identity", "target"}
+	defaultStorageRootDir       = "/opt/oms/omeye/omeye-hss/filestorage"
+	defaultStorageProtectedDirs = []string{"live", "de_identity", "target", "export-video"}
 	defaultStorageReidResultDir = "reid-result"
+
+	// defaultStorageRetentionDirs 보관 기간 정리 대상.
+	// REID_BACK의 기존 스케줄러(checkOldFileAndRemove)가 보던 디렉토리와 동일하다.
+	defaultStorageRetentionDirs = []string{"live", "de_identity", "target", "reid-result"}
 )
+
+// defaultStorageRetentionHour 보관 기간 정리 실행 시각 (KST).
+// REID_BACK의 기존 cron("0 0 4 * * *")과 동일하게 새벽 4시.
+const defaultStorageRetentionHour = 4
 
 // ServerStorageInfo 디스크 상태 정보 (단위: 이진 GiB, 소수점 2자리)
 type ServerStorageInfo struct {
@@ -30,10 +38,10 @@ type ServerStorageInfo struct {
 
 // candidate 삭제 후보 항목
 type candidate struct {
-	path     string    // 절대 경로
-	mtime    time.Time // 정렬 기준
-	size     int64     // 삭제 시 누적 계산 용도
-	isReidID bool      // true면 RemoveAll
+	path      string    // 절대 경로
+	mtime     time.Time // 정렬 기준
+	size      int64     // 삭제 시 누적 계산 용도
+	recursive bool      // true면 하위까지 통째로 삭제 (RemoveAll)
 }
 
 // storageConfig 현재 설정값 (없으면 기본값).
@@ -174,10 +182,10 @@ func collectCandidates(root string, protectedNames []string, reidResultName stri
 				}
 				size, _ := dirSize(idPath)
 				result = append(result, candidate{
-					path:     idPath,
-					mtime:    st.ModTime(),
-					size:     size,
-					isReidID: true,
+					path:      idPath,
+					mtime:     st.ModTime(),
+					size:      size,
+					recursive: true,
 				})
 			}
 			return filepath.SkipDir
@@ -198,10 +206,10 @@ func collectCandidates(root string, protectedNames []string, reidResultName stri
 		}
 
 		result = append(result, candidate{
-			path:     path,
-			mtime:    info.ModTime(),
-			size:     info.Size(),
-			isReidID: false,
+			path:      path,
+			mtime:     info.ModTime(),
+			size:      info.Size(),
+			recursive: false,
 		})
 		return nil
 	})
@@ -209,6 +217,80 @@ func collectCandidates(root string, protectedNames []string, reidResultName stri
 		return nil, err
 	}
 	return result, nil
+}
+
+// retentionConfig 보관 기간 정리 대상 설정 (없으면 기본값)
+func retentionConfig() (root string, dirs []string) {
+	root = configs.SC.Setting.StorageRootDir
+	if root == "" {
+		root = defaultStorageRootDir
+	}
+	root = filepath.Clean(root)
+
+	dirs = configs.SC.Setting.StorageRetentionDirs
+	if len(dirs) == 0 {
+		dirs = defaultStorageRetentionDirs
+	}
+	return
+}
+
+// collectRetentionCandidates 보관 기간이 지난 항목 수집.
+//
+// collectCandidates(percent/date 모드용)와 정책이 다르다. 저쪽은 사용률 목표에 닿을 때까지
+// 오래된 파일부터 하나씩 지워야 해서 트리 전체를 훑어 파일 단위로 모으지만,
+// 보관 기간 정리는 "기간 지난 묶음을 통째로" 지우는 것이므로
+// 지정된 디렉토리의 직계 자식만 보고 디렉토리면 하위까지 함께 삭제 대상으로 잡는다.
+// 그래야 날짜 디렉토리 껍데기가 남지 않는다.
+func collectRetentionCandidates(root string, dirNames []string, cutoff time.Time) []candidate {
+	var result []candidate
+
+	for _, name := range dirNames {
+		dirPath := filepath.Join(root, name)
+
+		entries, err := os.ReadDir(dirPath)
+		if err != nil {
+			// 디렉토리가 없는 것은 구성에 따라 정상일 수 있으므로 중단하지 않는다.
+			if os.IsNotExist(err) {
+				log.Warn(fmt.Sprintf("retention dir not exists: %s", dirPath))
+			} else {
+				log.Error(fmt.Errorf("read retention dir %s: %w", dirPath, err))
+			}
+			continue
+		}
+
+		for _, ent := range entries {
+			entPath := filepath.Join(dirPath, ent.Name())
+
+			st, err := os.Lstat(entPath)
+			if err != nil {
+				log.Warn(fmt.Sprintf("lstat %s: %v", entPath, err))
+				continue
+			}
+
+			// 심볼릭 링크는 건드리지 않는다 (링크가 가리키는 실제 데이터까지 지울 위험)
+			if st.Mode()&os.ModeSymlink != 0 {
+				continue
+			}
+
+			if !st.ModTime().Before(cutoff) {
+				continue
+			}
+
+			size := st.Size()
+			if st.IsDir() {
+				size, _ = dirSize(entPath)
+			}
+
+			result = append(result, candidate{
+				path:      entPath,
+				mtime:     st.ModTime(),
+				size:      size,
+				recursive: st.IsDir(),
+			})
+		}
+	}
+
+	return result
 }
 
 // splitFirst 상대 경로의 첫 세그먼트 반환
@@ -238,7 +320,7 @@ func dirSize(path string) (int64, error) {
 
 // removeCandidate 후보 하나 삭제 (파일이면 Remove, reid-result/{id}면 RemoveAll)
 func removeCandidate(c candidate) error {
-	if c.isReidID {
+	if c.recursive {
 		return os.RemoveAll(c.path)
 	}
 	return os.Remove(c.path)

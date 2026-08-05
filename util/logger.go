@@ -9,25 +9,44 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"github.com/mattn/go-isatty"
 	"github.com/rs/zerolog"
 )
+
+const logTimeFormat = "2006-01-02 15:04:05"
 
 func NewLogger(fp, fn string) *Log {
 	_ = os.MkdirAll(fp, 0755)
 	logFilePath := filepath.Join(fp, fn+".log")
 
-	writer := io.Writer(os.Stdout)
+	// 색을 입힌 출력은 ANSI 이스케이프가 그대로 섞여 vi 등으로 열었을 때 읽기 어렵다.
+	// 파일에는 항상 색 없이 쓰고, stdout은 터미널일 때만 색을 입힌다.
+	// (운영에서는 systemd가 stdout도 파일로 받으므로 — StandardOutput=file:... —
+	//  터미널이 아니면 색을 끄는 것이 곧 그 파일도 깨끗해진다는 뜻이다.)
+	writers := []io.Writer{
+		zerolog.ConsoleWriter{
+			Out:        os.Stdout,
+			TimeFormat: logTimeFormat,
+			NoColor:    !isTerminal(os.Stdout),
+		},
+	}
+
 	if file, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
-		writer = io.MultiWriter(os.Stdout, file)
+		writers = append(writers, zerolog.ConsoleWriter{
+			Out:        file,
+			TimeFormat: logTimeFormat,
+			NoColor:    true,
+		})
 	}
 
-	consoleWriter := zerolog.ConsoleWriter{
-		Out:        writer,
-		TimeFormat: "2006-01-02 15:04:05",
-	}
-
-	logger := zerolog.New(consoleWriter).With().Timestamp().Logger()
+	logger := zerolog.New(zerolog.MultiLevelWriter(writers...)).With().Timestamp().Logger()
 	return &Log{logger: logger}
+}
+
+// isTerminal 출력 대상이 실제 터미널인지 판정한다. 파이프/파일로 리다이렉트되면 false.
+func isTerminal(f *os.File) bool {
+	fd := f.Fd()
+	return isatty.IsTerminal(fd) || isatty.IsCygwinTerminal(fd)
 }
 
 type Log struct {

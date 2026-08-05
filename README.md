@@ -15,7 +15,14 @@ sudo apt install ethtool
 
 ### 3.1. 빌드
 ```bash
-go build -mod=vendor -o oms-monitoring
+./build.sh
+```
+
+빌드 시각을 바이너리에 주입하기 위해 스크립트를 사용한다. 기동 로그의 `Build Info:` 줄에서 확인할 수 있다.
+
+직접 빌드하려면 `ldflags`로 빌드 시각을 넘긴다. 생략하면 빌드 시각 대신 마지막 커밋 시각(`vcs.time`)이 표시된다.
+```bash
+go build -ldflags "-X github.com/omssejong/reid-monitoring/util.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o oms-monitoring
 ```
 
 ### 3.2. conf.d 설정
