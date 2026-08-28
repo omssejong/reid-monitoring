@@ -141,11 +141,11 @@ func reidServerInfo(w http.ResponseWriter, r *http.Request) {
 	//	return
 	//}
 
-	// 서버 GPU 정보 가져오기
+	// 서버 GPU 정보 가져오기.
+	// GPU가 없거나 NVML을 못 쓰는 장비에서도 나머지 하드웨어 정보는 그대로 응답한다.
 	gpuInfo, err := ReidGetGPUInfo()
 	if err != nil {
-		writeErrorJSON(w, http.StatusInternalServerError, err)
-		return
+		gpuInfo = []string{}
 	}
 
 	cpuSockets, err := GetCPUSocket(cpuThreads)

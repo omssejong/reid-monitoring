@@ -96,14 +96,16 @@ YAML 최상위 키:
 ## 6. 모듈 구성
 
 - 웹 계층: `util/web.go`, `util/middelware.go`
-- 메트릭 계층:
-  - `util/cpu.go` (`/proc/cpuinfo`, `/proc/stat`)
-  - `util/memory.go` (`/proc/meminfo`)
-  - `util/disk.go` (`syscall.Statfs`, `df` 유사 계산)
-  - `util/network.go` (`net`, `/proc/net/dev`, `/proc/net/route`, `/sys/class/net/*/speed`)
-  - `util/gpu.go` (NVML)
+- 메트릭 계층 (공통 로직 + `_linux.go` / `_windows.go` 플랫폼 구현):
+  - `util/cpu*.go` — Linux: `/proc/cpuinfo`, `/proc/stat` / Windows: `GetSystemTimes`, `GetLogicalProcessorInformationEx`, 레지스트리
+  - `util/memory*.go` — Linux: `/proc/meminfo` / Windows: `GlobalMemoryStatusEx`
+  - `util/disk*.go` — Linux: `syscall.Statfs` / Windows: `GetDiskFreeSpaceExW` (양쪽 모두 `df` 유사 계산)
+  - `util/network*.go` — Linux: `/proc/net/dev`, `/proc/net/route`, `/sys/class/net/*/speed` / Windows: `GetIfEntry2`, `GetAdaptersAddresses`
+  - `util/uptime_*.go` — Linux: `/proc/uptime` / Windows: `GetTickCount64`
+  - `util/gpu*.go` — NVML. Linux: `gonvml`(libnvidia-ml.so) / Windows: `nvml.dll` 직접 바인딩
   - `util/sse.go` (1초 주기 수집/스트리밍)
-- 운영 계층: `util/service.go`, `util/file.go`, `util/compress.go`, `util/patch.go`
+- 운영 계층: `util/service*.go`, `util/file.go`, `util/compress.go`, `util/patch*.go`
+  - 서비스 제어는 Linux: `systemctl` + `bash -c` / Windows: 서비스 제어 관리자(SCM) + `cmd /C`
 - 공통 계층: `util/config.go`, `util/logger.go`, `util/common.go`
 
 ## 7. 의존성 상태
@@ -122,9 +124,26 @@ YAML 최상위 키:
 
 ## 8. 운영 전제
 
-Linux 환경 전제:
-- `/proc/cpuinfo`, `/proc/stat`, `/proc/meminfo`, `/proc/net/dev`, `/proc/net/route`
+Linux / Windows 양쪽을 지원하며, 플랫폼 의존 코드는 빌드 태그(`//go:build linux` / `//go:build windows`)로 분리되어 있습니다.
+
+Linux 전제:
+- `/proc/cpuinfo`, `/proc/stat`, `/proc/meminfo`, `/proc/uptime`, `/proc/net/dev`, `/proc/net/route`
 - `/sys/class/net/<iface>/speed`
 - 서비스 제어 명령: `bash`, `systemctl`, `sudo`, `docker`, `virsh`
 
-즉, 시스템 메트릭 수집과 서비스 제어 모두 Linux 중심 동작을 전제로 합니다.
+Windows 전제:
+- 메트릭: `kernel32.dll`(GetSystemTimes / GlobalMemoryStatusEx / GetDiskFreeSpaceExW / GetTickCount64 / GetLogicalProcessorInformationEx), `iphlpapi.dll`(GetIfEntry2 / GetAdaptersAddresses)
+- CPU 모델명: 레지스트리 `HKLM\HARDWARE\DESCRIPTION\System\CentralProcessor\0` 의 `ProcessorNameString`
+- GPU: NVIDIA 드라이버가 설치한 `nvml.dll` (System32, 없으면 `%ProgramFiles%\NVIDIA Corporation\NVSMI`)
+  - GPU가 없거나 NVML을 못 쓰면 GPU 지표만 비우고(`gpu: []`, `gpu_sockets: 0`) 나머지 지표는 정상 수집한다.
+    실패 시 5분 간 재시도를 건너뛰며 경고는 최초 1회만 남긴다 (드라이버를 나중에 설치하면 자동으로 잡힌다)
+  - 노트북(Optimus 등)에서 dGPU가 절전 상태면 `nvmlDeviceGetUtilizationRates` 만 `NVML_ERROR_UNKNOWN(999)` 로
+    실패할 수 있다. 이 경우 해당 값만 0으로 보고하고 온도/메모리 등 나머지는 그대로 수집한다.
+    지표별 실패 로그는 첫 1건만 남기고, 그 지표가 다시 성공하면 상태가 초기화된다
+- 서비스 제어: Windows 서비스 제어 관리자(SCM). 서비스 start/stop/restart 및 `shutdown /r|/s` 는 관리자 권한 필요
+- 설정 주의:
+  - `networkName` 은 어댑터 표시 이름(예: `이더넷 2`)을 넣는다
+  - `rootPath` / `logPath` / `storageRootDir` 은 Windows 경로로 지정한다
+  - 서비스 이름에 `.service` 접미사가 붙어 있으면 자동으로 떼어내고 SCM 서비스 이름으로 조회한다
+  - restart 는 SCM에 대응 명령이 없어 stop → 중지 확인 → start 로 처리한다
+  - `middleserver` 재시작은 `virsh` 의존이라 Windows 에서는 미지원(에러 반환)

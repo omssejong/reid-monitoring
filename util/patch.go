@@ -116,8 +116,9 @@ func executePatch() error {
 	//today := now.Format("2006-01-02")
 	//patchLogFileName := fmt.Sprintf("patch_%s.log", today)
 	//args := []string{">>", "/usr/local/oms/omeye/omeye2/log/back/" + patchLogFileName}
-	//cmd := exec.Command("temp/patch_script.sh", args...)
-	cmd := exec.Command("temp/patch_script.sh")
+	//cmd := exec.Command(patchScriptPath, args...)
+	// 스크립트 경로는 플랫폼별 (patch_linux.go / patch_windows.go)
+	cmd := exec.Command(patchScriptPath)
 	// root 권한으로 실행되므로 password stdin 주입 불필요
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {

@@ -2,10 +2,7 @@ package util
 
 import (
 	"fmt"
-	"os"
 	"strconv"
-	"strings"
-	"time"
 )
 
 // buildSnapshot cpuUsage(이미 계산된 값)·직전 network 사용량·캐시된 서비스 상태로 스냅샷 1개 생성.
@@ -24,22 +21,20 @@ func buildSnapshot(cpuUsage float64, before NetworkUsage, serviceStatus []map[st
 	}
 	temp["serviceStatus"] = serviceStatus
 	temp["cpu"] = fmt.Sprintf("%0.2f%%", cpuUsage)
-	gpusUsage, err := GetGPUUsage()
-	if err != nil {
-		return temp, usage, err
-	}
-	gpuResponse := make([]map[string]uint, len(gpusUsage))
-	i := 0
-	for k, v := range gpusUsage {
-		gTemp := make(map[string]uint)
-		id, err := strconv.ParseUint(k, 10, 64)
-		if err != nil {
-			return temp, usage, err
+	// GPU는 선택 지표다. NVIDIA GPU/드라이버가 없는 장비에서도
+	// CPU/메모리/디스크/네트워크 지표 수집은 계속되어야 하므로 빈 배열로 처리한다.
+	gpuResponse := make([]map[string]uint, 0)
+	if gpusUsage, gpuErr := GetGPUUsage(); gpuErr == nil {
+		for k, v := range gpusUsage {
+			id, err := strconv.ParseUint(k, 10, 64)
+			if err != nil {
+				return temp, usage, err
+			}
+			gpuResponse = append(gpuResponse, map[string]uint{
+				"id":  uint(id),
+				"use": v.(map[string]any)["gpu_utilization"].(uint),
+			})
 		}
-		gTemp["id"] = uint(id)
-		gTemp["use"] = v.(map[string]any)["gpu_utilization"].(uint)
-		gpuResponse[i] = gTemp
-		i++
 	}
 	temp["gpu"] = gpuResponse
 	totalMemoryUsage, err := GetTotalMemorySize()
@@ -79,17 +74,11 @@ func buildSnapshot(cpuUsage float64, before NetworkUsage, serviceStatus []map[st
 }
 
 func getServerAliveTime() (string, error) {
-	// /proc/uptime 직접 읽기 (cat 프로세스 스폰 제거)
-	raw, err := os.ReadFile("/proc/uptime")
+	// 부팅 후 경과 시간 조회는 플랫폼별 구현 (uptime_linux.go / uptime_windows.go)
+	du, err := systemUptime()
 	if err != nil {
 		return "", err
 	}
-	serverRunTime := strings.Split(string(raw), " ")[0]
-	convServerRunTime, err := strconv.ParseFloat(serverRunTime, 32)
-	if err != nil {
-		return "", err
-	}
-	du := time.Duration(convServerRunTime * float64(time.Second))
 	days := int(du.Hours()) / 24
 	hours := int(du.Hours()) % 24
 	minutes := int(du.Minutes()) % 60

@@ -13,8 +13,8 @@ const (
 )
 
 // 기본값 (config 미설정 시 사용). REID_BACK의 path 설정과 동일하게 맞춘다.
+// defaultStorageRootDir 정의는 storage_linux.go / storage_windows.go 에 있다.
 var (
-	defaultStorageRootDir       = "/opt/oms/omeye/omeye-hss/filestorage"
 	defaultStorageProtectedDirs = []string{"live", "de_identity", "target", "export-video"}
 	defaultStorageReidResultDir = "reid-result"
 
@@ -73,13 +73,10 @@ func storageConfig() (root string, protected []string, reidResult string, exclud
 	return
 }
 
-// diskMeasurePath 디스크 사용률/용량 측정 기준 경로.
-// 파일 삭제 대상(storageRootDir)과는 별개로, 시스템 루트 파티션 기준으로 판정한다.
-const diskMeasurePath = "/"
-
-// GetServerStorageInfo 루트 파티션의 디스크 상태 반환 (GiB 단위).
-// 측정 대상 파티션은 "/" 이고, 실제 파일 삭제 대상은 storageRootDir 이므로
-// 두 경로가 동일 파티션에 있을 때 의도대로 동작한다.
+// GetServerStorageInfo 시스템 루트 파티션의 디스크 상태 반환 (GiB 단위).
+// 측정 대상 파티션은 diskMeasurePath(리눅스 "/", 윈도우 %SystemDrive%\) 이고
+// 실제 파일 삭제 대상은 storageRootDir 이므로, 두 경로가 동일 파티션에 있을 때 의도대로 동작한다.
+// diskMeasurePath 정의는 disk_linux.go / disk_windows.go 에 있다.
 func GetServerStorageInfo() (ServerStorageInfo, error) {
 	total, free, err := diskTotalFree(diskMeasurePath)
 	if err != nil {
